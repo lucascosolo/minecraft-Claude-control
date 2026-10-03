@@ -1,0 +1,6 @@
+.agent/
+.gradle/
+build/
+run/
+*.iml
+.idea/

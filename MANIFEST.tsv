@@ -1,0 +1,319 @@
+path	commit	date	kind	subject
+.gitignore	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+DECISIONS.md	cfec66bc	2026-10-02 04:37	fallback	v0.3 round H: trait relations never touch players for non-owners, real base valu
+README.md	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+build.gradle.kts	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+deploy/Dockerfile	574e047e	2026-10-02 09:08	fallback	PRD v0.3: round O amendments (repair mode closing check)
+deploy/README.md	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+deploy/backup.sh	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+deploy/boot-guard.sh	574e047e	2026-10-02 09:08	fallback	PRD v0.3: round O amendments (repair mode closing check)
+deploy/claude-repair	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+deploy/compose.yaml	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+deploy/entrypoint.sh	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+deploy/library.sh	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+deploy/repair-prompt.md	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+deploy/repair.sh	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+deploy/test-entrypoint.sh	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+deploy/test-repair.sh	114152dc	2026-10-02 10:01	fallback	Boot guard: check jar names across every jar first; a package shared by several 
+docs/PRD-v0.2.md	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+docs/PRD-v0.3.md	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+src/main/java/com/lucascosolo/claudecontrol/AgentBackend.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/AgentTurns.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/ApiBackend.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/Authority.java	ec2168ba	2026-10-02 03:41	fallback	PRD v0.3: round D amendments
+src/main/java/com/lucascosolo/claudecontrol/BackendUnavailable.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/BlockConnections.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/BookSpec.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/BookTool.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/BootGuardListener.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/BuildPlan.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/ChangeLog.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/ChatText.java	ec2168ba	2026-10-02 03:41	fallback	PRD v0.3: round D amendments
+src/main/java/com/lucascosolo/claudecontrol/ChunkFanOut.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/ClaudeControlPlugin.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/CliArgs.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/CliBackend.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/CliEvents.java	ec2168ba	2026-10-02 03:41	fallback	PRD v0.3: round D amendments
+src/main/java/com/lucascosolo/claudecontrol/CliSession.java	ec2168ba	2026-10-02 03:41	fallback	PRD v0.3: round D amendments
+src/main/java/com/lucascosolo/claudecontrol/Container.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/ContainerGate.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/ContainerTool.java	ec2168ba	2026-10-02 03:41	fallback	PRD v0.3: round D amendments
+src/main/java/com/lucascosolo/claudecontrol/CoverLifetimes.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/CoverSpec.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/CoverTool.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/EntityFilter.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/FallbackBackend.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/FindSpec.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/FindTool.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/GameTools.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/Geo.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/IndicatorText.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/JarScan.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/LibraryGate.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/LibrarySettle.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/McpServer.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/PlacesTool.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/PlayerActions.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/PluginLibrary.java	ec2168ba	2026-10-02 03:41	fallback	PRD v0.3: round D amendments
+src/main/java/com/lucascosolo/claudecontrol/QuestBook.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/QuestTool.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/RoutineSpec.java	ec2168ba	2026-10-02 03:41	fallback	PRD v0.3: round D amendments
+src/main/java/com/lucascosolo/claudecontrol/Routines.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/SpawnSpec.java	ec2168ba	2026-10-02 03:41	fallback	PRD v0.3: round D amendments
+src/main/java/com/lucascosolo/claudecontrol/SuiteGates.java	ec2168ba	2026-10-02 03:41	fallback	PRD v0.3: round D amendments
+src/main/java/com/lucascosolo/claudecontrol/SuiteTools.java	ec2168ba	2026-10-02 03:41	fallback	PRD v0.3: round D amendments
+src/main/java/com/lucascosolo/claudecontrol/ToolCatalog.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/ToolJson.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/ToolResult.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/TraitSpec.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/UndoTool.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/WakeConditions.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/WakeTool.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/java/com/lucascosolo/claudecontrol/WorkshopTools.java	91503e83	2026-10-02 04:32	fallback	WIP on main: 98889db PRD v0.3: round H amendments (entity traits review)
+src/main/resources/config.yml	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+src/main/resources/plugin.yml	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+src/main/resources/workshop-rules.md	a7161abe	2026-10-02 00:15	fallback	PRD v0.3: group 1 review amendments
+src/test/java/com/lucascosolo/claudecontrol/ActSpecRoundITest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/ActSpecSayRoundKTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/AskClaudeRoundMTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/AttachmentRecordRoundMTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/AuthorityBatchTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/AuthorityTurnTest.java	2e79faf7	2026-10-02 02:48	fallback	v0.3 group 2 review fixes: container ownership, safe teleports, loaded-chunk che
+src/test/java/com/lucascosolo/claudecontrol/AuthorityWakeTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/BehaviourBudgetRoundITest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/BehaviourBudgetRoundKTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/BehaviourBudgetRoundMTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/BehaviourSpecRoundITest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/ChangeLogRoutineRunTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/ChatTextControlTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/ChatTextRenderedImpersonationTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/ChatTextTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/CliArgsGlobTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/CliArgsScopeTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/CliArgsTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/ConditionRoundITest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/ContainerGateHintTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/ContainerSpecTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/EntityFilterTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/EntitySelectorRefTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/IdResolverTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/IndicatorCommandTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/JarScanTest.java	78022eda	2026-10-01 21:54	fallback	PRD: v0.2 review amendments; compose: fixed CPU and memory
+src/test/java/com/lucascosolo/claudecontrol/LaterStoreTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/LibraryReconcileTableTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/LibrarySettleTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/PlaceExprTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/PluginLibraryRestoreTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/RepairReportTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/RestartLimiterTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/RoutineSpecRuleStepRoundKTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/RuleTriggerRoundKTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/TraitSetRelatedRefusalTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/TraitSpecHoldKeySeqTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/UndoGateRoutineTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/UndoGateTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/UndoPlanTogetherTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/WakeStoreTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/java/com/lucascosolo/claudecontrol/WorkshopGateTest.java	8fbcf3f1	2026-10-02 10:05	fallback	Repair report and halt never read through a planted link; PRD round P for turnin
+src/test/resources/cli-sample.jsonl	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+src/test/resources/library-reconcile-cases.txt	7bdf124d	2026-10-02 10:48	exact	PRD v0.3: round Q amendments
+deploy/claude.env.example	-	-	missing	
+deploy/launch.sh	-	-	missing	
+deploy/permissions.sh	-	-	missing	
+deploy/superseded.sh	-	-	missing	
+docs/PRD.md	-	-	missing	
+gradlew	-	-	missing	
+gradlew.bat	-	-	missing	
+settings.gradle.kts	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/AgentService.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/AliveCap.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/BlockSpot.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ChatTriggerListener.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ClaudeCommand.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/Columns.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/CommandPolicy.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/CommandResult.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/CommandRunner.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/Connections.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ContainerSpec.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ConversationStore.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/CoverPlan.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/EffectSpec.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/EntityTraitsTool.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/EventTimer.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/GraveGuard.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/Graves.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/Handoff.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/IdResolver.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ItemSpec.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/JarBytes.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/JournalListener.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/JsonFileStore.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/LaterStore.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/LaterTool.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/LibraryReport.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/MemoryStore.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/PlaceBook.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/PlaceExpr.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/PlayerTool.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/PluginLogMatch.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/PluginManifest.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/PluginSettings.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/PluginWatch.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/PluginWatchService.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/RandomEventTrigger.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ReportRenderer.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ReportSection.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/RestartLimiter.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/RoutineTool.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/SafeSpot.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/SelectorGuard.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ShowSpec.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ShowTool.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/SiteFinder.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/SpawnTool.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/StatusReport.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/StatusTool.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/SuiteTool.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/SurveyRenderer.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ToolDispatcher.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ToolOutcome.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/TraitApplier.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/Trigger.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/TriggerBatch.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/TurnAbandoned.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/TurnContext.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/TurnIndicator.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/TurnRateLimiter.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/UndoGate.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/UndoPlan.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/WakeEvent.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/WakeSpec.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/WakeStore.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/WorkshopGate.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/WorldJournal.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/WorldReport.java	-	-	missing	
+src/main/resources/cli-rules.md	-	-	missing	
+src/main/resources/core-rules.md	-	-	missing	
+src/main/resources/system-prompt.md	-	-	missing	
+src/main/resources/workshop-off-rules.md	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ActSpecAskClaudeTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ActSpecChunk2Test.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ActSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/AgentServiceTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/AliveCapTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/AskClaudeTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/AttachmentRecordTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/AuthorityTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BehaviourBudgetEventTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BehaviourBudgetTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BehaviourLibraryRoundMTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BehaviourLibraryTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BehaviourRoundLTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BehaviourSpecChunk2Test.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BehaviourSpecRoundKTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BehaviourSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BookSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BuildPlanClearTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/BuildPlanTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ChangeLogBehaviourTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ChangeLogRecordsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ChangeLogRoutineSplitTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ChangeLogSaveTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ChangeLogTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ChangeLogTraitsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ChangeLogUndoStateTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ChatTextC1Test.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ChatTextControlsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ChatTextImpersonationTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/CliDenialTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/CliEventsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/CliToolCallTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/CliToolUseTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/CommandPolicyTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ConditionChunk2Test.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ConditionTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ConnectionsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ContainerGateTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ContainerStampTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ContainerTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ConversationStoreTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/CoverLifetimesSaveTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/CoverLifetimesTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/CoverPlanTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/CoverSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/EntityFanOutTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/EntitySelectorTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/EventTimerTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/FallbackBackendTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/FindSpecOwnerTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/FindSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/GeoTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/GraveGuardTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/HandoffTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/IndicatorTextTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ItemSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/JarBytesTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/JsonFileStoreTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/LibraryGateSafeTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/LibraryGateTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/LibrarySettleStrayTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/McpServerTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/MemoryStoreTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/MutableClock.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PlaceBookTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PlaceExprAwayTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PlaceExprNearTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PlayerActionsAttributesTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PlayerActionsClearTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PlayerActionsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PluginLibraryActivateDropTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PluginLibraryLifetimeTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PluginLibraryPluginsShaTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PluginLibraryReconcileTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PluginLibraryTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PluginLogMatchTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PluginManifestTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/PluginWatchTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/QuestBookRewardRemainderTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/QuestBookTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/QuestClaimTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/QuestRewardTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/RecentBlockTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/RepairTriggerGateTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/RoutineSpecActTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/RoutineSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/RoutineSpecTraitsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/RuleTriggerTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/SafeSpotTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/SelectorGuardTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ShowSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/SiteFinderTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/SpawnSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/SpawnSpecTraitsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/StatusReportTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/StepArgsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/SuiteGatesBlockTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/SuiteGatesHazardHTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/SuiteGatesHazardTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/SuiteGatesTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/SurveyRendererTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/TeleportGateTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/TestJson.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ToolJsonTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/TraitSpecHoldOrderTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/TraitSpecRoundHTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/TraitSpecTagsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/TraitSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/TriggerBatchTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/TurnRateLimiterTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/UndoGearTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/UndoKeepEntityTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/UndoPlanTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/UndoPlanTraitsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/WakeRetryTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/WakeSpecTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/WakeStoreCreatorsTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/WalkWatchTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/WatchProblemTextTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/WorldJournalTest.java	-	-	missing	

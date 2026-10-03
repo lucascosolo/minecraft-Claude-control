@@ -1,0 +1,15 @@
+name: ClaudeControl
+version: '${version}'
+main: com.lucascosolo.claudecontrol.ClaudeControlPlugin
+api-version: '26.1'
+folia-supported: true
+description: Forwards chat to a long-lived Claude agent that can act on the world.
+commands:
+  claude:
+    description: Control the ClaudeControl agent.
+    usage: /claude <status|pause|resume|reset|reload|event|plugins [disable <name>]>
+    permission: claudecontrol.admin
+permissions:
+  claudecontrol.admin:
+    description: Use /claude.
+    default: op

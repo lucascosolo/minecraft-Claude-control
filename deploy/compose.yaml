@@ -1,0 +1,37 @@
+services:
+  minecraft:
+    build:
+      context: .
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
+    image: claudecontrol-server:dev
+    volumes:
+      - "${SERVER_DIR:?set SERVER_DIR to the server directory}:/server"
+    ports:
+      - "25565:25565/tcp"
+      - "19132:19132/udp"
+      - "19132:19132/tcp"
+    environment:
+      HEAP: "${HEAP:-4G}"
+      # AlwaysPreTouch makes the JVM claim the whole heap at start, so the memory is held, not grown into.
+      JAVA_OPTS: "${JAVA_OPTS:--XX:+AlwaysPreTouch}"
+      # Repair mode (README "Repair mode"): off unless the owner sets CLAUDE_REPAIR=on when starting compose.
+      CLAUDE_REPAIR: "${CLAUDE_REPAIR:-off}"
+      CLAUDE_REPAIR_ENV_SCRUB: "${CLAUDE_REPAIR_ENV_SCRUB:-1}"
+    env_file: claude.env
+    restart: unless-stopped
+    # Held for the server: HEAP of RAM (claimed at start) and a guaranteed share of CPU under load.
+    # Ceiling: MEM_LIMIT covers the heap plus JVM overhead, the Claude CLI and plugin builds.
+    mem_limit: "${MEM_LIMIT:-8g}"
+    mem_reservation: "${MEM_RESERVATION:-6g}"
+    # Same as mem_limit: the server is never pushed into swap.
+    memswap_limit: "${MEM_LIMIT:-8g}"
+    cpus: "${CPUS:-4}"
+    cpu_shares: 2048
+    stop_grace_period: 60s
+    stdin_open: true
+    tty: true
+    cap_drop: [ALL]
+    # chown/chmod (FSETID keeps the setgid bit on the agent group dirs) at start, setpriv to mc, and sudo to agent.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, FSETID, SETUID, SETGID, AUDIT_WRITE]

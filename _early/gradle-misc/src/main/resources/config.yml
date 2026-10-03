@@ -1,0 +1,23 @@
+# Anthropic API key. The ANTHROPIC_API_KEY environment variable wins when set. Never logged.
+api-key: ""
+model: claude-opus-5-5
+# low | medium | high | xhigh | max
+effort: low
+batch-window-ms: 500
+max-turns-per-minute: 6
+max-queued-triggers: 200
+max-triggers-per-player-per-minute: 12
+max-tool-iterations: 12
+max-commands-per-call: 20
+command-timeout-ms: 5000
+chat-prefix: "[Claude] "
+denied-commands: [stop, restart, op, deop, ban, ban-ip, pardon, pardon-ip, whitelist, save-off, reload, rl, function, schedule,
+                  datapack, transfer, perf, debug, jfr, publish, setidletimeout, paper, spigot, timings, plugins, sudo, lp,
+                  luckperms, perm, permissions, pex, plugman, claude, claudecontrol]
+events:
+  enabled: true
+  min-minutes: 20
+  max-minutes: 45
+  themes: [treasure hunt, surprise gift, friendly visitor, fireworks show, weather moment,
+           mini quest, trivia with a prize, mystery merchant, cooperative challenge,
+           scavenger hunt, pet or companion, story moment tied to past events]

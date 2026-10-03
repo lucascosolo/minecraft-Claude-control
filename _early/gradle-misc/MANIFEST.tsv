@@ -1,0 +1,43 @@
+path	commit	date	kind	subject
+.gitignore	4481706e	2026-10-01 20:49	exact	PRD v0.2: Claude Code CLI backend, MCP server, workshop, container
+DECISIONS.md	4481706e	2026-10-01 20:49	exact	PRD v0.2: Claude Code CLI backend, MCP server, workshop, container
+README.md	4481706e	2026-10-01 20:49	exact	PRD v0.2: Claude Code CLI backend, MCP server, workshop, container
+docs/PRD-v0.2.md	4481706e	2026-10-01 20:49	exact	PRD v0.2: Claude Code CLI backend, MCP server, workshop, container
+docs/PRD.md	c5d028c8	2026-10-01 19:57	fallback	PRD + core rules: spatial awareness, anchored builds, intent
+src/main/java/com/lucascosolo/claudecontrol/ClaudeClient.java	0bf1dbe8	2026-10-01 20:05	fallback	Spatial tools, real JSON results; PRD item 21: global-only command dispatch
+src/main/java/com/lucascosolo/claudecontrol/ClaudeControlPlugin.java	0bf1dbe8	2026-10-01 20:05	fallback	Spatial tools, real JSON results; PRD item 21: global-only command dispatch
+src/main/java/com/lucascosolo/claudecontrol/CommandRunner.java	0bf1dbe8	2026-10-01 20:05	fallback	Spatial tools, real JSON results; PRD item 21: global-only command dispatch
+src/main/java/com/lucascosolo/claudecontrol/GameTools.java	0bf1dbe8	2026-10-01 20:05	fallback	Spatial tools, real JSON results; PRD item 21: global-only command dispatch
+src/main/resources/config.yml	4481706e	2026-10-01 20:49	exact	PRD v0.2: Claude Code CLI backend, MCP server, workshop, container
+src/main/resources/core-rules.md	0bf1dbe8	2026-10-01 20:05	fallback	Spatial tools, real JSON results; PRD item 21: global-only command dispatch
+src/test/resources/cli-sample.jsonl	4481706e	2026-10-01 20:49	exact	PRD v0.2: Claude Code CLI backend, MCP server, workshop, container
+build.gradle.kts	-	-	missing	
+gradlew	-	-	missing	
+gradlew.bat	-	-	missing	
+settings.gradle.kts	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/AgentService.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ChatTriggerListener.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ClaudeCommand.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/CommandPolicy.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/CommandResult.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ConversationStore.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/EventTimer.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/MemoryStore.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/RandomEventTrigger.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/SiteFinder.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/SurveyRenderer.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/ToolJson.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/Trigger.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/TriggerBatch.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/TurnRateLimiter.java	-	-	missing	
+src/main/java/com/lucascosolo/claudecontrol/WorldSnapshot.java	-	-	missing	
+src/main/resources/plugin.yml	-	-	missing	
+src/main/resources/system-prompt.md	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/AgentServiceTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/CommandPolicyTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/ConversationStoreTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/EventTimerTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/MemoryStoreTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/MutableClock.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/TriggerBatchTest.java	-	-	missing	
+src/test/java/com/lucascosolo/claudecontrol/TurnRateLimiterTest.java	-	-	missing	

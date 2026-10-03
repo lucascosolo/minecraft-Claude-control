@@ -1,0 +1,13 @@
+# D10: one reconcile rule for deploy/library.sh and PluginLibrary. Checked by test-entrypoint.sh and LibraryReconcileTableTest.
+# name|jar in plugins/|jar in claude-library/|activating marker (none, match = sha of the library jar, mismatch, plugins-differs)|expected
+# marker values: match = marker sha equals the library jar and the plugins/ jar is the same file; plugins-differs = marker sha equals the library jar but the plugins/ jar is a different (truncated) file, so the activation is not complete and the library copy wins (E3)
+# expected: library = library copy kept, plugins/ copies superseded, entry shelved; activated = plugins/ copy kept, library copy removed, entry active; none = nothing moved
+both, no marker|yes|yes|none|library
+both, activating with matching sha|yes|yes|match|activated
+both, activating with another sha|yes|yes|mismatch|library
+library only, activating with matching sha|no|yes|match|none
+library only|no|yes|none|none
+plugins only|yes|no|none|none
+both, activating sha matches library but plugins jar differs|yes|yes|plugins-differs|library
+# match-older = marker sha equals the library jar, plugins/ClaudeTbl_r2.jar is that jar and plugins/ClaudeTbl.jar is older content; activated-older = the activation completes and the older jar moves to claude-quarantine/superseded (H10)
+both, activation completes while an older revision sits in plugins|yes|yes|match-older|activated-older

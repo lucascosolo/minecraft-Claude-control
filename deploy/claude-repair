@@ -1,0 +1,75 @@
+#!/bin/bash
+# Runs the repair session's requests (docs/PRD-v0.3.md R3, N4) as the server user, called by the start script only.
+# It validates every argument itself.
+set -euo pipefail
+umask 0007
+S=${CLAUDE_REPAIR_SERVER:-/server}; S=${S%/}
+
+usage() { echo "usage: claude-repair hold-plugin <jar> | unhold-plugin <jar> | restore-file <path> | note <text>" >&2; exit 2; }
+refuse() { echo "claude-repair: refused: $*" >&2; exit 1; }
+nolink() { # every component from S (exclusive) to $1 is not a link
+    local p=$1
+    while [[ $p != "$S" && $p == "$S"/* ]]; do [[ -L $p ]] && refuse "$p is a symlink"; p=$(dirname -- "$p"); done
+    return 0
+}
+log() { printf '%s\t%s\t%s\n' "$(date +%s)" "$1" "$2" >> "$RD/helper.log"; }
+
+(( $# >= 2 )) || usage
+cmd=$1; shift
+case $cmd in hold-plugin|unhold-plugin|restore-file|note) ;; *) usage ;; esac
+
+stamp=
+[[ -f $S/claude-repair/current && ! -L $S/claude-repair/current ]] && IFS= read -r stamp < "$S/claude-repair/current" || true
+[[ $stamp =~ ^[0-9]{8}T[0-9]{6}Z$ && -d $S/claude-repair/$stamp && ! -L $S/claude-repair/$stamp ]] || { echo "claude-repair: no repair in progress" >&2; exit 2; }
+RD=$S/claude-repair/$stamp
+[[ -L $RD/helper.log ]] && refuse "helper.log is a symlink"
+
+jarname() {
+    local j=$1
+    j=${j#"$S/plugins/"}; j=${j#plugins/}
+    [[ $j =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*\.jar$ ]] || refuse "not a plugin jar name: $1"
+    shopt -s nocasematch
+    [[ $j == ClaudeControl* ]] && refuse "ClaudeControl is never held"
+    shopt -u nocasematch
+    printf '%s' "$j"
+}
+
+held_here() { # JAR: held by this repair and not returned since
+    [[ -f $RD/helper.log ]] && awk -F'\t' -v j="plugins/$1" '$3 == j && $2 == "hold" { h = 1 } $3 == j && $2 == "unhold" { h = 0 } END { exit !h }' "$RD/helper.log"
+}
+
+move() { # SRC DESTDIR LABEL
+    local src=$1 to=$2 name; name=$(basename -- "$src")
+    nolink "$to"; nolink "$src"
+    [[ -f $src ]] || refuse "$src is not a file"
+    [[ -e $to/$name || -L $to/$name ]] && refuse "$to/$name already exists"
+    mkdir -p -- "$to"
+    nolink "$to"
+    mv -T -n -- "$src" "$to/$name"
+    [[ -e $src ]] && refuse "cannot move $src"
+    log "$3" "plugins/$name"
+    if [[ $3 == hold ]]; then echo "held $name"; else echo "returned $name"; fi
+}
+
+case $cmd in
+    hold-plugin) j=$(jarname "$1"); move "$S/plugins/$j" "$S/plugins/claude-held" hold ;;
+    unhold-plugin) j=$(jarname "$1"); held_here "$j" || refuse "$j was not held by this repair"; move "$S/plugins/claude-held/$j" "$S/plugins" unhold ;;
+    restore-file)
+        p=$1
+        [[ $p =~ [[:cntrl:]] ]] && refuse "control character in path"
+        p=${p#"$S/"}
+        [[ $p == /* ]] && refuse "$1 is outside the server directory"
+        [[ /$p/ == */../* || /$p/ == */./* ]] && refuse "$1 has a . or .. component"
+        grep -qxF -- "$p" "$RD/files.txt" || refuse "$p is not a configuration file of this repair"
+        src=$RD/before/$p dst=$S/$p
+        [[ -f $src && ! -L $src ]] || refuse "no saved copy of $p"
+        nolink "$dst"
+        tmp=$(mktemp -p "$(dirname -- "$dst")" .claude-repair.XXXXXX)
+        cp -- "$src" "$tmp" && mv -T -- "$tmp" "$dst" || { rm -f -- "$tmp"; refuse "cannot restore $p"; }
+        log restore "$p"
+        echo "restored $p" ;;
+    note)
+        t=$(printf '%s' "$*" | tr '[:cntrl:]' ' ' | cut -c1-500)
+        log note "$t"
+        echo "noted" ;;
+esac

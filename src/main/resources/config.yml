@@ -1,0 +1,49 @@
+# Which brain serves turns: cli (Claude Code subprocess; the API below is its fallback when a key is set) or api.
+backend: cli
+cli:
+  binary: claude
+  model: opus
+  # low | medium | high | xhigh | max
+  effort: low
+  turn-timeout-seconds: 300
+  # Subscription token from `claude setup-token`; or set CLAUDE_CODE_OAUTH_TOKEN in the server's environment. Never logged.
+  oauth-token: ""
+  # Claude Code's config directory; empty means plugins/ClaudeControl/cli-home (never the server user's own ~/.claude).
+  config-dir: ""
+  # Prepended to the claude command line, e.g. [sudo, -n, -u, agent, --].
+  command-prefix: []
+mcp:
+  # Port of the game tools' MCP server on 127.0.0.1; 0 picks a free one. Read at startup only.
+  port: 0
+workshop:
+  # Lets Claude write, build and install its own plugins (Bash, Gradle). Only takes effect inside a container.
+  enabled: false
+  # Restart budget for restart_server (each restart warns players for 30 seconds first).
+  min-minutes-between-restarts: 30
+  max-restarts-per-day: 4
+# Anthropic API key. The ANTHROPIC_API_KEY environment variable wins when set. Never logged.
+api-key: ""
+model: claude-opus-5-5
+# low | medium | high | xhigh | max
+effort: low
+batch-window-ms: 500
+max-turns-per-minute: 6
+max-queued-triggers: 200
+max-triggers-per-player-per-minute: 12
+max-tool-iterations: 12
+max-commands-per-call: 20
+command-timeout-ms: 5000
+chat-prefix: "<Claude> "
+denied-commands: [stop, restart, op, deop, ban, ban-ip, pardon, pardon-ip, whitelist, save-off, reload, rl, function, schedule,
+                  datapack, transfer, perf, debug, jfr, publish, setidletimeout, paper, spigot, timings, plugins, sudo, lp,
+                  luckperms, perm, permissions, pex, plugman, claude, claudecontrol]
+events:
+  enabled: true
+  min-minutes: 20
+  max-minutes: 45
+  themes: [treasure hunt, surprise gift, friendly visitor, fireworks show, weather moment,
+           mini quest, trivia with a prize, mystery merchant, cooperative challenge,
+           scavenger hunt, pet or companion, story moment tied to past events]
+
+# Exact account names that count as operators for every Claude gate (dangerous spawns, special items, acting on other players).
+owners: []
