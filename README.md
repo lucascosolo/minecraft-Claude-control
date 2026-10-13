@@ -10,7 +10,7 @@ and Bedrock players. The recovered advanced implementation is preserved separate
 Run this in your normal terminal:
 
 ```sh
-python3 /home/lucas/Workspaces/minecraft-Claude-control/tools/start_server.py
+python3 /home/lucas/Workspaces/minecraft-Claude-control/tools/start_desktop.py
 ```
 
 The helper checks Docker, builds the plugin, verifies official server downloads,
@@ -30,6 +30,21 @@ Configured owners can use `/claude status`, `/claude pause`, `/claude resume`,
 `/claude reload`, `/claude reset` and `/claude event`. The persona encourages
 ambitious towns, transport, adventures and ongoing stories, built in practical
 stages with you.
+
+Claude has a visible character without requiring another Minecraft account.
+Use `/claude companion summon` on clear level ground, then
+`/claude companion follow`, `wave`, `stay` or `status`. These direct controls
+make no API calls. Through conversation, Claude can perform small physical
+building jobs, or gesture while conjuring larger structures and changing time
+or weather. It is kind, playful and powerful, and seeks fun things you can do
+together without imposing a role or title on itself.
+
+Physical walking currently requires safe loaded ground on one level; stairs
+and jumping are not implemented. Physical jobs place up to 16 blocks in sequence
+and report partial work honestly. Larger builds use the instant bounded build
+tool. Owner-authorized world effects can reach all server worlds; remote building
+uses loaded chunks and protects existing structures. Both client renderings and
+physical animations still need a live check.
 
 ## Tools and limits
 
@@ -62,6 +77,10 @@ Core tests mock the provider and exercise authorization, bounded state, tool
 handling and caching. Panel and startup tests use scratch data and fake
 Docker/RCON. Docker boot, real Java/Bedrock clients and a paid Claude turn still
 need validation on your desktop.
+
+Current verification: 52 core tests, 17 panel tests and 21 startup-helper tests
+passed, and the shaded plugin jar was built and inspected. This does not replace
+the first live desktop session. Historical shell tests remain excluded.
 
 Historical `src/`, `_early/` and `deploy/` are incomplete recovery material.
 The old build and README are in `recovered/`; `MANIFEST.tsv` records provenance.

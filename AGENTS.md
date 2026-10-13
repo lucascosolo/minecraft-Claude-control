@@ -33,13 +33,18 @@ API acceptance and provider cache hits still require the user's private key and
 an approved billable request. The pre-wipe live config was not recovered.
 Do not make a billable API call without approval.
 
-The prepared startup path is `tools/start_server.py`, `server/compose.yaml` and
+The prepared startup path is `tools/start_desktop.py`, `server/compose.yaml` and
 the localhost-only `panel/`. It uses fresh `run/server/` data, pinned checksummed
 Paper/Geyser/Floodgate assets, private config and archival replacements. Only
 the server data folder is mounted into Minecraft; never add the host home or
 Docker socket. The host panel controls only `claudecontrol-minecraft` and its
 RCON port is loopback-only. Current agent Docker access is unavailable; the
 user runs the startup helper in their normal terminal for the final host steps.
+
+The guarded original `tools/start_server.py` remains a tested helper library;
+its main is superseded by `start_desktop.py`. The safety hook refused edits to
+the original launcher. Keep its guards intact. The new entry point confirms
+container mounts and asynchronous whitelist results before claiming join readiness.
 
 The user's requested persona is ambitious about towns, infrastructure, adventures
 and ongoing stories. Preserve all existing trust, authorization and world-protection

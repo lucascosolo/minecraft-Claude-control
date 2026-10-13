@@ -26,15 +26,30 @@ def scratch():
 
 
 class FakeRunner:
-    def __init__(self, stdout='{"Status":"running","Running":true}', returncode=0):
+    def __init__(self, root, stdout="", returncode=0, absent=False):
         self.calls = []
         self.stdout = stdout
         self.returncode = returncode
+        self.absent = absent
+        self.inspect_data = {
+            "Name": "/claudecontrol-minecraft",
+            "Config": {"Labels": {"com.docker.compose.project": "claudecontrol", "com.docker.compose.service": "minecraft"}},
+            "Mounts": [{"Type": "bind", "Source": str(root / "run" / "server"), "Destination": "/server", "RW": True}],
+            "State": {"Status": "running", "Running": True},
+        }
 
     def __call__(self, args, **kwargs):
         self.calls.append((args, kwargs))
         if not isinstance(args, list) or kwargs.get("shell", False):
             raise AssertionError("Docker invocation must use an argument list without shell")
+        if args[:2] == ["docker", "inspect"]:
+            if self.absent:
+                return subprocess.CompletedProcess(args, 1, "", "Error: No such object: claudecontrol-minecraft")
+            return subprocess.CompletedProcess(args, 0, json.dumps(self.inspect_data), "")
+        if args[:2] == ["docker", "info"]:
+            return subprocess.CompletedProcess(args, 0, '"fake-docker-version"', "")
+        if args[:2] == ["docker", "compose"]:
+            self.absent = False
         return subprocess.CompletedProcess(args, self.returncode, self.stdout, "")
 
 
@@ -99,7 +114,7 @@ class DockerControllerTest(unittest.TestCase):
         (self.root / "server" / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
 
     def test_start_and_stop_use_only_fixed_nondestructive_arguments(self):
-        runner = FakeRunner()
+        runner = FakeRunner(self.root)
         controller = DockerController(self.root, runner=runner)
         self.assertIsInstance(controller.start(), dict)
         self.assertIsInstance(controller.stop(), dict)
@@ -108,17 +123,18 @@ class DockerControllerTest(unittest.TestCase):
             "docker", "compose", "-p", "claudecontrol", "-f",
             str((self.root / "server" / "compose.yaml").resolve()), "up", "-d", "minecraft",
         ], commands)
-        self.assertIn(["docker", "stop", "--time", "30", "claudecontrol-minecraft"], commands)
+        self.assertIn(["docker", "stop", "--time", "60", "claudecontrol-minecraft"], commands)
+        stop_calls = [kwargs for command, kwargs in runner.calls if command[:2] == ["docker", "stop"]]
+        self.assertTrue(all(kwargs["timeout"] > 60 for kwargs in stop_calls))
         self.assertTrue(all(not any(word in command for word in ("down", "rm", "exec")) for command in commands))
 
     def test_status_and_logs_use_fake_runner_and_redact_password(self):
-        runner = FakeRunner(stdout="<script>alert('x')</script> rcon.password=" + self.password)
+        runner = FakeRunner(self.root, stdout="<script>alert('x')</script> rcon.password=" + self.password)
         controller = DockerController(self.root, runner=runner)
         logs = controller.logs()
         self.assertIsInstance(logs, str)
         self.assertIn("<script>alert('x')</script>", logs)
         self.assertNotIn(self.password, logs)
-        runner.stdout = json.dumps({"Status": "running", "Running": True})
         self.assertIsInstance(controller.status(), dict)
         self.assertTrue(runner.calls)
 
@@ -133,7 +149,7 @@ class DockerControllerTest(unittest.TestCase):
     def test_rcon_authentication_and_fragmented_output(self):
         fake = FakeRcon(output="Town command accepted")
         factory, calls = self.connection(fake)
-        controller = DockerController(self.root, runner=FakeRunner(), connection_factory=factory)
+        controller = DockerController(self.root, runner=FakeRunner(self.root), connection_factory=factory)
         self.assertEqual(controller.command("claude status"), "Town command accepted")
         self.assertEqual(len(calls), 1)
         self.assertEqual(fake.requests[0][1:], (3, self.password))
@@ -143,7 +159,7 @@ class DockerControllerTest(unittest.TestCase):
     def test_rcon_echo_never_reveals_password(self):
         fake = FakeRcon(output="echo " + self.password)
         factory, _ = self.connection(fake)
-        controller = DockerController(self.root, runner=FakeRunner(), connection_factory=factory)
+        controller = DockerController(self.root, runner=FakeRunner(self.root), connection_factory=factory)
         self.assertNotIn(self.password, controller.command("say hello"))
 
     def test_invalid_commands_refuse_before_connection(self):
@@ -151,7 +167,7 @@ class DockerControllerTest(unittest.TestCase):
         def forbidden_connection(*args, **kwargs):
             calls.append((args, kwargs))
             raise OSError("Unexpected connection attempt")
-        controller = DockerController(self.root, runner=FakeRunner(), connection_factory=forbidden_connection)
+        controller = DockerController(self.root, runner=FakeRunner(self.root), connection_factory=forbidden_connection)
         for command in ("", "  ", "/", " / ", "stop\nstart", "stop\rstart", "say\x00hi", "say\thi", "x" * 1025, "é" * 513):
             with self.subTest(command=repr(command)):
                 with self.assertRaises(Exception):
@@ -163,11 +179,96 @@ class DockerControllerTest(unittest.TestCase):
             with self.subTest(parameters=parameters):
                 fake = FakeRcon(**parameters)
                 factory, _ = self.connection(fake)
-                controller = DockerController(self.root, runner=FakeRunner(), connection_factory=factory)
+                controller = DockerController(self.root, runner=FakeRunner(self.root), connection_factory=factory)
                 with self.assertRaises(Exception) as caught:
                     controller.command("claude status")
                 self.assertNotIn(self.password, str(caught.exception))
                 self.assertTrue(fake.closed)
+
+    def assert_no_effects(self, runner, connections):
+        self.assertEqual(connections, [], "refusal must precede RCON connection")
+        self.assertTrue(all(args[:2] not in (["docker", "compose"], ["docker", "stop"], ["docker", "logs"])
+                            for args, _ in runner.calls), "refusal must precede container actions or log reads")
+
+    def test_foreign_container_labels_name_and_bind_mounts_refuse_every_operation(self):
+        wrong_source = self.root / "foreign-data"
+        wrong_source.mkdir()
+        variants = [
+            ("project-label", lambda data: data["Config"]["Labels"].update({"com.docker.compose.project": "foreign"})),
+            ("service-label", lambda data: data["Config"]["Labels"].update({"com.docker.compose.service": "foreign"})),
+            ("name", lambda data: data.update({"Name": "/other-container"})),
+            ("source", lambda data: data["Mounts"][0].update({"Source": str(wrong_source)})),
+            ("destination", lambda data: data["Mounts"][0].update({"Destination": "/other-data"})),
+            ("readonly", lambda data: data["Mounts"][0].update({"RW": False})),
+            ("volume", lambda data: data["Mounts"][0].update({"Type": "volume"})),
+            ("extra-bind", lambda data: data["Mounts"].append({"Type": "bind", "Source": str(wrong_source), "Destination": "/extra", "RW": True})),
+            ("missing-mount", lambda data: data.update({"Mounts": []})),
+        ]
+        for name, change in variants:
+            for operation in ("status", "start", "stop", "logs", "command"):
+                with self.subTest(variant=name, operation=operation):
+                    runner = FakeRunner(self.root)
+                    change(runner.inspect_data)
+                    connections = []
+                    def factory(*args, **kwargs):
+                        connections.append(args)
+                        raise OSError("connection must not occur")
+                    controller = DockerController(self.root, runner=runner, connection_factory=factory)
+                    with self.assertRaises(Exception):
+                        getattr(controller, operation)(*( ["claude status"] if operation == "command" else []))
+                    self.assert_no_effects(runner, connections)
+
+    def test_absent_container_status_and_start_allowed_but_other_actions_refuse(self):
+        runner = FakeRunner(self.root, absent=True)
+        controller = DockerController(self.root, runner=runner)
+        status = controller.status()
+        self.assertEqual(status["state"], "not-created")
+        self.assertFalse(status["running"])
+        self.assertTrue(controller.start()["running"])
+        self.assertTrue(any(args[:2] == ["docker", "compose"] for args, _ in runner.calls))
+        for operation in ("stop", "logs", "command"):
+            with self.subTest(operation=operation):
+                absent = FakeRunner(self.root, absent=True)
+                connections = []
+                def factory(*args, **kwargs):
+                    connections.append(args)
+                    raise OSError("connection must not occur")
+                controller = DockerController(self.root, runner=absent, connection_factory=factory)
+                with self.assertRaises(Exception):
+                    getattr(controller, operation)(*( ["claude status"] if operation == "command" else []))
+                self.assert_no_effects(absent, connections)
+
+    def test_symlinked_project_or_server_ancestors_refuse_before_effects(self):
+        fixture = scratch()
+        root_link = fixture / "project-link"
+        root_link.symlink_to(self.root, target_is_directory=True)
+        parent_link = fixture / "ancestor-link"
+        parent_link.symlink_to(self.root.parent, target_is_directory=True)
+        run_link_root = fixture / "run-link-project"
+        run_link_root.mkdir()
+        (run_link_root / "run").symlink_to(self.root / "run", target_is_directory=True)
+        server_link_root = fixture / "server-link-project"
+        (server_link_root / "run").mkdir(parents=True)
+        (server_link_root / "run" / "server").symlink_to(self.root / "run" / "server", target_is_directory=True)
+        roots = [root_link, parent_link / self.root.name, run_link_root, server_link_root]
+        for candidate in (run_link_root, server_link_root):
+            (candidate / "server").mkdir()
+            (candidate / "server" / "compose.yaml").write_text("services: {}\n")
+        properties = self.root / "run" / "server" / "server.properties"
+        before = properties.read_bytes()
+        for candidate in roots:
+            for operation in ("start", "stop", "logs", "command"):
+                with self.subTest(path=candidate, operation=operation):
+                    runner = FakeRunner(candidate)
+                    connections = []
+                    def factory(*args, **kwargs):
+                        connections.append(args)
+                        raise OSError("connection must not occur")
+                    with self.assertRaises(Exception):
+                        controller = DockerController(candidate, runner=runner, connection_factory=factory)
+                        getattr(controller, operation)(*( ["claude status"] if operation == "command" else []))
+                    self.assert_no_effects(runner, connections)
+        self.assertEqual(properties.read_bytes(), before)
 
 
 class FakeController:

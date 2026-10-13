@@ -8,7 +8,7 @@ python3 panel/server.py
 
 Open **http://127.0.0.1:8766** on this desktop. Start creates or starts the
 `claudecontrol-minecraft` container through `server/compose.yaml`. Stop sends
-Docker's stop signal with a 30-second grace period so Minecraft can save. It does
+Docker's stop signal with a 60-second grace period so Minecraft can save. It does
 not remove containers, volumes, worlds or files. The console polls Docker logs
 once per second and keeps up to 2,000 lines in the browser tab.
 
@@ -48,7 +48,10 @@ API reads require the session cookie. Mutations additionally require matching
 local Host and Origin headers and the `X-CSRF-Token` session token. JSON bodies
 are limited to 4 KiB; commands to 1,024 UTF-8 bytes and one line without control
 characters. RCON packet identifiers, sizes and response counts are checked.
-There is no shell execution or arbitrary container endpoint. Errors omit Docker
-and socket diagnostic strings. Output redacts known RCON passwords, Anthropic
+There is no shell execution or arbitrary container endpoint. Every operation
+verifies real project paths, Compose ownership labels
+and the container's sole bind mount from this project's `run/server` to `/server`.
+Containers with unexpected binds or volumes are refused, even if their name matches.
+Errors omit Docker and socket diagnostic strings. Output redacts known RCON passwords, Anthropic
 token patterns, bearer tokens and named key/password assignments; arbitrary
 unlabeled secrets in third-party plugin logs cannot be recognized reliably.

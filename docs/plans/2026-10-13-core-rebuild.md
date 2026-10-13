@@ -64,3 +64,11 @@ Panel: localhost port 8766 only, fixed container `claudecontrol-minecraft`, fixe
 Startup script: verify prerequisites, confine every generated path to project `run/`, preserve existing contents in unique archives, verify pinned asset hashes, build/package core, securely collect an API key without argv/logging, ask EULA acceptance, configure exact owner names and whitelisting, build a Java-only container with only its own data directory writable and no host home/socket mount, start it, wait for readiness, add Java/Floodgate whitelist entries, and launch the local panel. Keep real configs and keys ignored by git. Never delete, clean, or run historical scripts. Starting the service is a user-run final step.
 
 Verify core JUnit XML, panel and startup-helper XML, package contents and checksums; render panel once at desktop/mobile if browser capability is available. Report any unavailable live Minecraft/Docker/client/API verification honestly.
+
+## Chunk 7: Visible Claude companion
+
+The user requested a character that hangs out with players and physically responds to small chores. The linked Mineflayer MCP project currently declares Minecraft 1.21.11 support; use Paper 26.2 native mannequins instead, with installed Geyser mannequin translation. No extra account or MCP desktop client is needed. Client rendering still needs live verification.
+
+Files: core Companion, CompanionPlan, GameTools, ClaudeControlPlugin, prompts and independent CompanionPlanTest. One persistent tagged body; adopt loaded entities and preserve its identity to prevent duplicate spawns in unloaded chunks. Explicit summon/follow/stay/wave/status/move controls; no autonomous API requests. Motion stays on safe loaded same-level cardinal cells, bounded path radius and inspections, stops on obstruction, lost authority, disconnect or shutdown. Small physical builds preflight protected clear volume and <=16 operations, walk within reach, swing/place sequentially, reauthorize and recheck every mutation. Worker waits for bounded final result; partial placements reported truthfully and remembered. Larger existing build remains an explicit bulk tool.
+
+Verify independent planner tests, compilation/package, lifecycle and authority review. Physical walking, animations and both client renderings remain live checks for the final desktop launch.

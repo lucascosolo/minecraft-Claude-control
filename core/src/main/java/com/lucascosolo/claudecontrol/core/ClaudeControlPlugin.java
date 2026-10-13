@@ -27,11 +27,14 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
     private ExecutorService worker;
     private MemoryStore memory;
     private GameTools tools;
+    private Companion companion;
     private BukkitTask eventTimer;
     private final Map<UUID,ArrayDeque<Long>> rates=new HashMap<>();
     private final ArrayDeque<Long> serverRates=new ArrayDeque<>();
     private final Set<FutureTask<?>> pending=ConcurrentHashMap.newKeySet();
     public Settings settings() {return settings;}
+    public Companion companion(){return companion;}
+    public boolean isPaused(){return paused || stopping;}
     @Override public void onEnable() {
         try {
             saveDefaultConfig();
@@ -46,6 +49,8 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
                 catch(InterruptedException e){Thread.currentThread().interrupt();break;}
                 catch(Exception e){lastOutcome="Worker operation failed; consult configuration";getLogger().warning(lastOutcome);}
             });
+            companion=new Companion(this);
+            queue.offer(()->{try{companion.persistIdentity();}catch(Exception e){lastOutcome="Companion identity persistence failed";}});
             Objects.requireNonNull(getCommand("claude")).setExecutor(this);
             Bukkit.getPluginManager().registerEvents(this,this);
             configureEvents();
@@ -86,6 +91,25 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
     }
     @Override public boolean onCommand(CommandSender sender,Command command,String label,String[] args) {
         String action=args.length==0?"status":args[0].toLowerCase(Locale.ROOT);
+        if(action.equals("companion")) {
+            if(!(sender instanceof Player player) || !player.hasPermission("claudecontrol.ask")){sender.sendMessage("Control the companion from an authenticated permitted player account.");return true;}
+            com.google.gson.JsonObject input=new com.google.gson.JsonObject();input.addProperty("action",args.length>1?args[1].toLowerCase(Locale.ROOT):"status");
+            try {
+                if(input.get("action").getAsString().equals("move")) {
+                    if(args.length!=5)throw new IllegalArgumentException();
+                    input.addProperty("x",Integer.parseInt(args[2]));input.addProperty("y",Integer.parseInt(args[3]));input.addProperty("z",Integer.parseInt(args[4]));
+                }
+                Turn turn=new Turn(player.getUniqueId(),player.getName(),settings.isOwner(player.getUniqueId(),player.getName(),player.isOp()),"Explicit companion control",false);
+                if(Set.of("stay","status").contains(input.get("action").getAsString())) {
+                    sender.sendMessage(settings.chatPrefix()+companion.action(input,turn).text());return true;
+                }
+                if(!queue.offer(()->{
+                    try{ToolReply result=tools.execute("companion",input,turn);tellPlayer(turn.actorId(),settings.chatPrefix()+result.text());}
+                    catch(Exception e){tellPlayer(turn.actorId(),"Claude's companion action was refused; check loaded safe ground and permissions.");}
+                }))sender.sendMessage("Claude's queue is full; retry shortly.");
+            }catch(Exception e){sender.sendMessage("Usage: /claude companion summon|follow|stay|wave|status|move <x> <y> <z>");}
+            return true;
+        }
         if(action.equals("ask")) {
             if(!(sender instanceof Player player)){sender.sendMessage("Ask Claude from an authenticated player account.");return true;}
             if(args.length<2){sender.sendMessage("Usage: /claude ask <message>");return true;}
@@ -97,7 +121,7 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
             case "status" -> sender.sendMessage("Claude: " + (paused?"paused":settings.apiKey().isBlank()?"inactive; set api-key in private config.yml":"ready")
                 + "; API model " + settings.model() + "; queue " + queue.size() + "; events " + (settings.eventsEnabled()?"on":"off") + "; " + lastOutcome
                 + "; last-turn tokens in/out " + agent.lastUsage().inputTokens()+"/"+agent.lastUsage().outputTokens());
-            case "pause" -> {paused=true;sender.sendMessage("Claude paused. A turn already in progress may finish.");}
+            case "pause" -> {paused=true;companion.stop("Paused by owner");sender.sendMessage("Claude paused. A turn already in progress may finish.");}
             case "resume" -> {paused=false;sender.sendMessage(settings.apiKey().isBlank()?"No API key configured. Add it to private config.yml, then /claude reload.":"Claude resumed.");}
             case "reload" -> reloadAgent(sender);
             case "reset" -> {
@@ -123,7 +147,7 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
                     ApiAgent previous=agent;
                     settings=next;agent=replacement;tools=replacementTools;
                     previous.close();
-                    onServerThread(()->{configureEvents();return null;});
+                    onServerThread(()->{companion.reload();configureEvents();return null;});
                     tell(sender,"Claude settings reloaded after the active turn. Queue capacity changes apply at server restart.");
                 }catch(Exception e){tell(sender,"Reload failed; previous active settings retained where possible.");}
             }))sender.sendMessage("Claude queue is full; reload not queued.");
@@ -217,6 +241,7 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
     @Override public void onDisable() {
         stopping=true;paused=true;
         if(eventTimer!=null)eventTimer.cancel();
+        if(companion!=null)companion.close();
         pending.forEach(future->future.cancel(false));pending.clear();
         Bukkit.getScheduler().cancelTasks(this);
         if(worker!=null)worker.shutdownNow();

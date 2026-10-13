@@ -1,6 +1,6 @@
 # Desktop cross-play server
 
-From a normal terminal in the project, run `python3 tools/start_server.py`.
+From a normal terminal in the project, run `python3 tools/start_desktop.py`.
 The helper checks Docker first, builds the core plugin, verifies pinned official
 downloads, asks for two player identities, accepts a private API key using hidden
 input, and asks you to accept the [Minecraft EULA](https://www.minecraft.net/eula).
@@ -11,9 +11,11 @@ Use Minecraft Java **26.2**, connecting to this PC's LAN address on port **25565
 In Bedrock, add the same LAN address with port **19132**. Geyser and Floodgate
 provide Bedrock access without requiring the Bedrock player to own Java.
 Console editions that do not offer custom server entry need a supported custom
-server connection method. Both player identities are added to the whitelist.
+server connection method. Both player identities are added to the whitelist;
+saved valid UUIDs must match both accounts before player access is confirmed.
 Bedrock owners use the exact Floodgate name (`.` plus gamertag, spaces replaced
-by underscores). Check the script's whitelist responses before joining.
+by underscores). Bedrock gamertags are limited to 16 raw characters. Check the
+launcher's final whitelist confirmation before joining.
 
 Live world and configuration live under gitignored `run/server/`. Claude's key is
 in `run/server/plugins/ClaudeControl/config.yml`, mode 600. Existing configuration

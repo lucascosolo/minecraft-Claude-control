@@ -18,6 +18,10 @@ class ControlError(Exception):
     """A safe, operator-facing error that never contains subprocess output."""
 
 
+class DockerUnavailable(ControlError):
+    """The daemon cannot be reached; distinct from a missing container."""
+
+
 def redact(value: str) -> str:
     value = re.sub(r"sk-ant-[A-Za-z0-9_-]+", "[REDACTED]", value)
     value = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._-]+", r"\1[REDACTED]", value)
@@ -43,7 +47,9 @@ def validate_command(command: str) -> str:
 class DockerController:
     def __init__(self, project_root: Path, runner=subprocess.run,
                  connection_factory=socket.create_connection):
-        self.project_root = Path(project_root).resolve()
+        original_root = Path(project_root).absolute()
+        self.project_root = original_root.resolve()
+        self._root_alias = original_root != self.project_root
         self.runner = runner
         self.connection_factory = connection_factory
         self.lock = threading.Lock()
@@ -60,24 +66,78 @@ class DockerController:
         except OSError:
             raise ControlError("Cannot run Docker. Check Docker access and try again.") from None
 
-    def status(self) -> dict:
-        result = self._run(["docker", "inspect", "--format", "{{json .State}}", CONTAINER])
+    def _validate_paths(self):
+        """Validate all fixed local paths before querying or controlling Docker."""
+        if self._root_alias or not self.project_root.is_dir():  # SAFETY-GUARD
+            raise ControlError("Project directory must be a real directory without symlink ancestry.")
+        for relative in ("server", "server/compose.yaml", "run", "run/server"):
+            path = self.project_root / relative
+            if path.is_symlink() or path.resolve() != path:  # SAFETY-GUARD
+                raise ControlError("Server paths must stay inside the project without symlinks.")
+            if relative == "server/compose.yaml":
+                if not path.is_file():  # SAFETY-GUARD
+                    raise ControlError("Server setup is missing server/compose.yaml. Run the setup script first.")
+            elif not path.is_dir():  # SAFETY-GUARD
+                raise ControlError("Server data directories are missing. Run the setup script first.")
+
+    def _inspect(self, allow_missing=False):
+        self._validate_paths()
+        result = self._run(["docker", "inspect", "--format", "{{json .}}", CONTAINER])
         if result.returncode:
             # A second read-only query distinguishes absent containers from a dead daemon.
             probe = self._run(["docker", "info", "--format", "{{json .ServerVersion}}"])
             if probe.returncode:
-                return {"state": "offline", "running": False,
-                        "message": "Docker is unavailable. Start Docker or check your Docker permissions."}
-            return {"state": "not-created", "running": False,
-                    "message": "Server container has not been created. Finish server setup, then select Start."}
+                raise DockerUnavailable("Docker is unavailable. Start Docker or check your Docker permissions.")
+            missing = any(marker in result.stderr.lower() for marker in ("no such object", "no such container"))
+            if allow_missing and missing:
+                return None
+            if missing:
+                raise ControlError("Minecraft container has not been created. Start it after server setup.")
+            raise ControlError("Cannot verify Minecraft container identity. Check Docker access.")
         try:
             data = json.loads(result.stdout)
             if not isinstance(data, dict):
                 raise ValueError()
         except (ValueError, TypeError):
-            raise ControlError("Docker returned an unreadable container status.") from None
+            raise ControlError("Docker returned unreadable container identity data.") from None
+        config = data.get("Config")
+        labels = config.get("Labels") if isinstance(config, dict) else None
+        if (data.get("Name") != "/" + CONTAINER or not isinstance(labels, dict)
+                or labels.get("com.docker.compose.project") != "claudecontrol"
+                or labels.get("com.docker.compose.service") != "minecraft"):  # SAFETY-GUARD
+            raise ControlError("Refusing to control a container that does not belong to this Minecraft project.")
+        mounts = data.get("Mounts")
+        if not isinstance(mounts, list):  # SAFETY-GUARD
+            raise ControlError("Cannot verify Minecraft container mounts.")
+        binds = []
+        for mount in mounts:
+            if not isinstance(mount, dict):  # SAFETY-GUARD
+                raise ControlError("Cannot verify Minecraft container mounts.")
+            if mount.get("Type") == "bind":
+                binds.append(mount)
+            elif mount.get("Type") != "tmpfs" or mount.get("Destination") != "/tmp":  # SAFETY-GUARD
+                raise ControlError("Minecraft container has unexpected mounts. Refusing control.")
+        expected = str(self.project_root / "run" / "server")
+        if (len(binds) != 1 or binds[0].get("Source") != expected
+                or binds[0].get("Destination") != "/server"
+                or binds[0].get("RW") is not True):  # SAFETY-GUARD
+            raise ControlError("Minecraft must mount only this project's server data folder. Refusing control.")
+        if not isinstance(data.get("State"), dict):  # SAFETY-GUARD
+            raise ControlError("Docker returned an unreadable container status.")
+        return data
+
+    def status(self) -> dict:
+        try:
+            container = self._inspect(allow_missing=True)
+        except DockerUnavailable as error:
+            return {"state": "offline", "running": False, "message": str(error)}
+        if container is None:
+            return {"state": "not-created", "running": False,
+                    "message": "Server container has not been created. Finish server setup, then select Start."}
+        data = container["State"]
         raw = data.get("Status", "unknown")
-        health = (data.get("Health") or {}).get("Status")
+        health_data = data.get("Health")
+        health = health_data.get("Status") if isinstance(health_data, dict) else None
         running = data.get("Running") is True
         state = "running" if running else "stopped"
         if raw in ("restarting", "created") or (running and health == "starting"):
@@ -99,9 +159,8 @@ class DockerController:
 
     def start(self) -> dict:
         with self.lock:
+            self._inspect(allow_missing=True)
             compose = self.project_root / "server" / "compose.yaml"
-            if not compose.is_file():
-                raise ControlError("Server setup is missing server/compose.yaml. Run the setup script first.")
             result = self._run(["docker", "compose", "-p", "claudecontrol", "-f",
                                 str(compose), "up", "-d", "minecraft"], timeout=180)
             if result.returncode:
@@ -110,7 +169,8 @@ class DockerController:
 
     def stop(self) -> dict:
         with self.lock:
-            result = self._run(["docker", "stop", "--time", "30", CONTAINER], timeout=45)
+            self._inspect()
+            result = self._run(["docker", "stop", "--time", "60", CONTAINER], timeout=75)
             if result.returncode:
                 raise ControlError("Docker could not stop Minecraft. Check the container status and try again.")
             return self.status()
@@ -125,6 +185,7 @@ class DockerController:
         return redact(output)
 
     def logs(self) -> str:
+        self._inspect()
         result = self._run(["docker", "logs", "--tail", "200", "--timestamps", CONTAINER])
         if result.returncode:
             raise ControlError("Console output is unavailable. Start the server or check Docker access.")
@@ -135,7 +196,7 @@ class DockerController:
     def _password(self) -> str:
         run_root = self.project_root / "run" / "server"
         properties = run_root / "server.properties"
-        if (run_root.resolve() != run_root or properties.resolve().parent != run_root):
+        if (run_root.resolve() != run_root or properties.resolve() != properties):  # SAFETY-GUARD
             raise ControlError("Server configuration path is invalid.")
         try:
             with properties.open(encoding="utf-8") as source:
@@ -183,6 +244,7 @@ class DockerController:
 
     def command(self, command: str) -> str:
         command = validate_command(command)
+        self._inspect()
         password = self._password()
         try:
             with self.connection_factory(("127.0.0.1", 25575), timeout=5) as connection:

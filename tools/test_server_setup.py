@@ -4,6 +4,7 @@ import ast
 import hashlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import stat
 import sys
@@ -18,8 +19,8 @@ SCRIPT = PROJECT / "tools" / "start_server.py"
 OFFICIAL = "https://fill-data.papermc.io/v1/objects/test/paper.jar"
 
 
-def import_helpers():
-    spec = importlib.util.spec_from_file_location("_tested_start_server", SCRIPT)
+def import_helpers(script=SCRIPT):
+    spec = importlib.util.spec_from_file_location("_tested_" + script.stem, script)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     # Importing helpers must not launch anything, contact a service or ask for a key.
@@ -227,6 +228,97 @@ class ServerSetupTest(unittest.TestCase):
                                      and keyword.value.value is True for keyword in node.keywords), "shell=True is forbidden")
 
 
+class ServerAccountTest(unittest.TestCase):
+    def setUp(self):
+        base = PROJECT / "tools" / "build" / "test-scratch"
+        base.mkdir(parents=True, exist_ok=True)
+        self.fixture = Path(tempfile.mkdtemp(prefix="desktop-accounts-", dir=base))
+        self.root = self.fixture / "project"
+        self.root.mkdir()
+        self.helpers = import_helpers(PROJECT / "tools" / "start_desktop.py")
+
+    def test_account_names_preserve_java_identity_and_floodgate_prefix(self):
+        self.assertEqual(self.helpers.account_name({"platform": "java", "name": "JavaOwner"}), "JavaOwner")
+        self.assertEqual(self.helpers.account_name({"platform": "bedrock", "name": "Bedrock Owner"}), ".Bedrock_Owner")
+        self.assertEqual(self.helpers.account_name({"platform": "bedrock", "name": "Owner_2"}), ".Owner_2")
+
+    def test_whitelist_confirms_only_exact_names_with_valid_identity_uuids(self):
+        accounts = [{"platform": "java", "name": "JavaOwner"}, {"platform": "bedrock", "name": "Bedrock Owner"}]
+        entries = [
+            {"name": "javaowner", "uuid": "123e4567-e89b-42d3-a456-426614174000"},
+            {"name": ".bEdRoCk_OwNeR", "uuid": "00000000-0000-0000-0009-000000000123"},
+        ]
+        self.assertEqual(self.helpers.whitelist_confirmed(accounts, entries), {"JavaOwner", ".Bedrock_Owner"})
+        self.assertEqual(self.helpers.whitelist_confirmed(accounts, entries[:1]), {"JavaOwner"})
+        self.assertEqual(self.helpers.whitelist_confirmed(accounts, entries[1:]), {".Bedrock_Owner"})
+        self.assertEqual(self.helpers.whitelist_confirmed(accounts, []), set())
+
+    def test_whitelist_rejects_prefixless_long_or_java_identity_bedrock_entries(self):
+        account = [{"platform": "bedrock", "name": "Bedrock Owner"}]
+        variants = [
+            {"name": "Bedrock_Owner", "uuid": "00000000-0000-0000-0009-000000000123"},
+            {"name": ".Bedrock Owner", "uuid": "00000000-0000-0000-0009-000000000123"},
+            {"name": ".Bedrock_Owner_extra", "uuid": "00000000-0000-0000-0009-000000000123"},
+            {"name": ".Bedrock_Owner", "uuid": "123e4567-e89b-42d3-a456-426614174000"},
+            {"name": ".Bedrock_Owner", "uuid": "00000000-0000-0001-0009-000000000123"},
+            {"name": ".Bedrock_Owner", "uuid": "00000000-0000-0000-0000-000000000000"},
+        ]
+        for entry in variants:
+            with self.subTest(entry=entry):
+                self.assertEqual(self.helpers.whitelist_confirmed(account, [entry]), set())
+
+    def test_malformed_whitelist_entries_are_ignored_without_hiding_valid_entries(self):
+        accounts = [{"platform": "java", "name": "JavaOwner"}, {"platform": "bedrock", "name": "Bedrock Owner"}]
+        malformed = [None, 42, True, "JavaOwner", [], {}, {"name": "JavaOwner"},
+            {"name": "JavaOwner", "uuid": "invalid"}, {"name": "JavaOwner", "uuid": None},
+            {"name": "JavaOwner", "uuid": "00000000-0000-0000-0000-000000000000"},
+            {"name": 42, "uuid": "123e4567-e89b-42d3-a456-426614174000"},
+            {"name": "JavaOwner ", "uuid": "123e4567-e89b-42d3-a456-426614174000"},
+            {"name": "JavaOwner_extra", "uuid": "123e4567-e89b-42d3-a456-426614174000"}]
+        self.assertEqual(self.helpers.whitelist_confirmed(accounts, malformed), set())
+        valid = {"name": "JAVAOWNER", "uuid": "123e4567-e89b-42d3-a456-426614174000"}
+        self.assertEqual(self.helpers.whitelist_confirmed(accounts, malformed + [valid]), {"JavaOwner"})
+        for invalid_container in (None, "not json entries", {"name": "JavaOwner", "uuid": valid["uuid"]}):
+            with self.subTest(container=invalid_container):
+                self.assertEqual(self.helpers.whitelist_confirmed(accounts, invalid_container), set())
+
+    def test_floodgate_uuid_accepts_nonzero_lower_half_boundaries(self):
+        accounts = [{"platform": "bedrock", "name": "Bedrock Owner"}]
+        for identity in ("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-ffff-ffffffffffff"):
+            with self.subTest(identity=identity):
+                self.assertEqual(self.helpers.whitelist_confirmed(accounts,
+                    [{"name": ".Bedrock_Owner", "uuid": identity}]), {".Bedrock_Owner"})
+
+    def test_bedrock_raw_gamertag_limit_is_enforced_before_accounts_are_written(self):
+        canary = self.root / "canary"
+        canary.write_bytes(b"preserve")
+        with patch.object(self.helpers, "PROJECT", self.root), \
+             patch("builtins.input", side_effect=["java", "JavaOwner", "bedrock", "B" * 17]):
+            with self.assertRaises(ValueError):
+                self.helpers.player_accounts()
+        self.assertFalse((self.root / "run" / "player-accounts.json").exists())
+        self.assertEqual(canary.read_bytes(), b"preserve")
+
+    def test_bedrock_sixteen_character_boundary_is_accepted_but_saved_long_names_refuse(self):
+        accounts = [{"platform": "java", "name": "JavaOwner"}, {"platform": "bedrock", "name": "B" * 16}]
+        with patch.object(self.helpers, "PROJECT", self.root), \
+             patch("builtins.input", side_effect=["java", "JavaOwner", "bedrock", "B" * 16]):
+            self.assertEqual(self.helpers.player_accounts(), accounts)
+        saved = self.root / "run" / "player-accounts.json"
+        self.assertEqual(json.loads(saved.read_text()), accounts)
+        # Preserve the accepted fixture, then install a separate invalid input fixture.
+        saved.rename(saved.with_name("accepted-player-accounts.json"))
+        invalid = [{"platform": "java", "name": "JavaOwner"}, {"platform": "bedrock", "name": "B" * 17}]
+        saved.write_text(json.dumps(invalid))
+        before = saved.read_bytes()
+        with patch.object(self.helpers, "PROJECT", self.root), \
+             patch("builtins.input", side_effect=AssertionError("Saved invalid account must fail, not prompt")):
+            with self.assertRaises(ValueError):
+                self.helpers.player_accounts()
+        self.assertEqual(saved.read_bytes(), before)
+        self.assertTrue(saved.with_name("accepted-player-accounts.json").exists())
+
+
 class XmlResult(unittest.TextTestResult):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -270,7 +362,7 @@ class XmlResult(unittest.TextTestResult):
 
 
 if __name__ == "__main__":
-    suite = unittest.defaultTestLoader.loadTestsFromTestCase(ServerSetupTest)
+    suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
     result = unittest.TextTestRunner(verbosity=2, resultclass=XmlResult).run(suite)
     result.write_report()
     raise SystemExit(0 if result.wasSuccessful() else 1)
