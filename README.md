@@ -2,11 +2,21 @@
 
 A Folia 26.1.2 plugin that forwards server chat to one long-lived Claude agent. Claude can run console commands (with a denylist), speak in chat, inspect players and keep notes. Most chat gets no response; Claude acts only when something calls for it.
 
-## Install
+## Restoration status
+
+This checkout is a partial recovery from the home-directory wipe. It is not yet buildable or ready to install: production classes (including `PluginSettings`, `AgentService`, `MemoryStore`, `ToolDispatcher` and `WorldReport`), build files, CLI resources and deployment modules are missing. `MANIFEST.tsv` is the original recovery record; `python3 tools/check_restoration.py` reports which files are still absent without executing the plugin or its historical tests. The Gradle build also refuses missing production files before compilation.
+
+**Do not run `deploy/test-entrypoint.sh` or `deploy/test-repair.sh`.** The recovered tests still contain unsafe deletion cleanup, including the failure pattern that caused the wipe. Direct-execution guards and scratch-only archival cleanup must be added and verified before those tests can run. Never run the repair test fragment on its own. The deployment scripts also contain deletion code and require a safety review before execution.
+
+New installations now default to `backend: api`. Once the missing production code is recovered and verified, the intended setup is `backend: api` with `api-key` in `plugins/ClaudeControl/config.yml`; API mode requires no Claude Code login. Existing configurations must explicitly select `api` if they previously used `cli`. The original credential-bearing server configuration has not been located or verified. The bundled config is a template with an empty key. Keep a real config outside version control.
+
+The new bundled `system-prompt.md` gives Claude ambitious aspirations for shared towns, infrastructure, adventures and ongoing stories, with staged execution and respect for player consent and existing builds. It is a replacement persona, not a recovered copy. Existing servers retain their own persona file, which must be reviewed before incorporating this text.
+
+## Install (after restoration and verification)
 
 1. `./gradlew build`, then copy `build/libs/ClaudeControl.jar` into the server's `plugins/` folder (keep that exact name, replacing any older `ClaudeControl-<version>.jar`: the container boot guard treats every other `Claude*.jar` as Claude-written).
 2. Start the server once. This creates `plugins/ClaudeControl/config.yml` and `system-prompt.md`.
-3. Set `api-key` in `config.yml`, or set the `ANTHROPIC_API_KEY` environment variable (the variable wins). Then run `/claude reload`.
+3. Select `backend: api` and set `api-key` in `config.yml`, or set the `ANTHROPIC_API_KEY` environment variable (the variable wins). Then run `/claude reload`.
 
 Without a key the plugin still loads, logs one warning and ignores chat.
 
@@ -15,15 +25,15 @@ Without a key the plugin still loads, logs one warning and ignores chat.
 | Key | Default | Meaning |
 |---|---|---|
 | `model` | `claude-opus-5-5` | Model id |
-| `effort` | `medium` | `low`, `medium`, `high`, `xhigh` or `max`. Higher means more thinking, more cost and slower turns |
-| `batch-window-ms` | 1500 | How long to collect chat before starting a turn |
+| `effort` | `low` | `low`, `medium`, `high`, `xhigh` or `max`. Higher means more thinking, more cost and slower turns |
+| `batch-window-ms` | 500 | How long to collect chat before starting a turn |
 | `max-turns-per-minute` | 6 | Rate limit. Chat is held back until a turn is allowed, never dropped |
 | `max-queued-triggers` | 200 | Chat lines held beyond this are dropped |
 | `max-triggers-per-player-per-minute` | 12 | Chat lines accepted per player per minute; extra lines from that player are dropped |
 | `max-tool-iterations` | 12 | Tool rounds per turn |
 | `max-commands-per-call` | 20 | Commands per `run_commands` call |
 | `command-timeout-ms` | 5000 | Per-command timeout |
-| `chat-prefix` | `[Claude] ` | Prefix on Claude's chat messages |
+| `chat-prefix` | `<Claude> ` | Prefix on Claude's chat messages |
 | `events.enabled` | `true` | Claude starts small random events on its own while players are online (not while paused) |
 | `events.min-minutes` / `events.max-minutes` | 20 / 45 | Random gap between events. The minimum is at least 1; a maximum below the minimum means a fixed gap |
 | `events.themes` | treasure hunt, surprise gift, … | Themes suggested to Claude, picked at random |
@@ -35,7 +45,7 @@ The plugin's fixed core rules (trust, events, tool use) live inside the jar and 
 
 ## Backends
 
-Each turn is served by one of two backends (`backend` in `config.yml`):
+Each turn is served by one of two backends (`backend` in `config.yml`). New configurations default to `api`; older configurations may still select `cli`:
 
 - `cli` (default): a long-lived [Claude Code](https://claude.com/claude-code) process (`cli.binary`) started in `plugins/ClaudeControl/agent/`, using your Claude subscription. Authenticate it with `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) in the server's environment or `cli.oauth-token`. It runs with its own config directory (`plugins/ClaudeControl/cli-home`, or `cli.config-dir`), never your own `~/.claude`, and `ANTHROPIC_API_KEY` is removed from its environment. The game tools reach it over a loopback-only MCP server with a random token; it edits its memory files in `agent/memory/` with its file tools and has no shell or web access. Its session id is kept in `cli-session-id` and resumed after a restart. If the process cannot start, dies, is not logged in or a turn passes `cli.turn-timeout-seconds`, the turn falls back to the API (when a key is set) and the CLI is retried after 5 minutes.
 - `api`: the Anthropic API directly with `api-key`, as in v0.1.

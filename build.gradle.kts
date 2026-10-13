@@ -25,7 +25,22 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// Report missing recovered production files before compilation.
+val verifyRestoration by tasks.registering {
+    doLast {
+        val requiredPaths = file("MANIFEST.tsv").readLines().drop(1)
+            .map { it.substringBefore('\t') }
+            .filter { it.startsWith("src/main/") }
+        val missingPaths = requiredPaths.filter { !file(it).isFile }
+        check(missingPaths.isEmpty()) {
+            "Restoration incomplete; recover these files before building:\n" + missingPaths.joinToString("\n")
+        }
+    }
+}
+
 tasks {
+    compileJava { dependsOn(verifyRestoration) }
+    processResources { dependsOn(verifyRestoration) }
     test {
         useJUnitPlatform()
     }

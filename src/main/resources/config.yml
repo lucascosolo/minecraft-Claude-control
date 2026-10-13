@@ -1,5 +1,6 @@
-# Which brain serves turns: cli (Claude Code subprocess; the API below is its fallback when a key is set) or api.
-backend: cli
+# Which brain serves turns: api (Anthropic API key) or cli (Claude Code subprocess).
+# API mode works without a Claude Code installation or subscription login.
+backend: api
 cli:
   binary: claude
   model: opus
