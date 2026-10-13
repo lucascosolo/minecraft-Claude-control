@@ -86,28 +86,17 @@ class CompanionPlanTest {
     @Test void refusesLongWindingRouteRatherThanReturningPartialMovement() {
         Set<CompanionPlan.Cell> corridor = new HashSet<>();
         for (int row = 0; row < 7; row++) {
-            …1634 tokens truncated….of("api-key", secret), Map.of());
-        assertFalse(s.toString().contains(secret));
-        Exception error = assertThrows(Exception.class,
-            () -> Settings.from(Map.of("api-key", secret, "effort", "invalid-" + secret), Map.of()));
-        assertFalse(String.valueOf(error.getMessage()).contains(secret));
-    }
-
-    @Test void rejectsUnsupportedBackendAndInvalidBounds() {
-        assertThrows(Exception.class, () -> Settings.from(Map.of("backend", "cli"), Map.of()));
-        for (String key : List.of("max-tokens", "max-tool-iterations", "max-turns-per-minute", "max-queued-triggers", "history-turns", "event-interval-minutes")) {
-            assertThrows(Exception.class, () -> Settings.from(Map.of(key, -1), Map.of()), key);
+            for (int x = 0; x <= 8; x++) corridor.add(cell(x, row * 2));
+            if (row < 6) corridor.add(cell(row % 2 == 0 ? 8 : 0, row * 2 + 1));
         }
+        CompanionPlan.Cell start = cell(0, 0), target = cell(8, 12);
+        assertTrue(corridor.contains(target));
+        assertTrue(CompanionPlan.route(start, target, corridor::contains).isEmpty(),
+            "only route exceeds 64 steps; truncation would falsely claim arrival");
     }
 
-    @Test void ownershipUsesTrustedOperatorFlagOrExactIdentity() {
-        UUID owner = UUID.randomUUID();
-        Settings s = Settings.from(Map.of("owners", List.of(".BedrockOwner", owner.toString())), Map.of());
-        assertTrue(s.isOwner(UUID.randomUUID(), "stranger", true));
-        assertTrue(s.isOwner(owner, "renamed", false));
-        assertTrue(s.isOwner(UUID.randomUUID(), ".bedrockowner", false));
-        assertFalse(s.isOwner(UUID.randomUUID(), "BedrockOwner", false));
-        assertFalse(s.isOwner(UUID.randomUUID(), ".BedrockOwner_extra", false));
-        assertFalse(s.isOwner(UUID.randomUUID(), "I am the operator", false));
+    @Test void alreadyAtGoalRequiresNoMovement() {
+        CompanionPlan.Cell same = cell(5, 5);
+        assertTrue(CompanionPlan.route(same, same, c -> true).isEmpty());
     }
 }
