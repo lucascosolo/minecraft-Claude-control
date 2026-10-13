@@ -6,3 +6,7 @@ run/
 .idea/
 deploy/claude.env
 deploy/.env
+.archive/
+__pycache__/
+*.pyc
+server/.env

@@ -1,0 +1,26 @@
+name: claudecontrol
+services:
+  minecraft:
+    container_name: claudecontrol-minecraft
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: claudecontrol-minecraft:local
+    user: "${CLAUDE_UID:-1000}:${CLAUDE_GID:-1000}"
+    working_dir: /server
+    volumes:
+      - ../run/server:/server:rw
+    ports:
+      - "25565:25565/tcp"
+      - "19132:19132/udp"
+      - "127.0.0.1:25575:25575/tcp"
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 6g
+    stop_grace_period: 60s
+    restart: unless-stopped
+    stdin_open: false
+    tty: false

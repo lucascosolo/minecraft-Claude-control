@@ -1,0 +1,55 @@
+:root { color-scheme: dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #1c232b; color: #eef1f4; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1120px; padding: 36px 32px 24px; margin: 0 auto; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 28px; }
+h1 { font-size: 28px; line-height: 1.2; letter-spacing: -.025em; margin: 0; font-weight: 650; }
+h2 { font-size: 15px; margin: 0; font-weight: 650; }
+p { margin: 0; }
+.subtitle { color: #b3bec9; font-size: 14px; margin-top: 8px; }
+.actions { display: flex; gap: 10px; flex-shrink: 0; }
+button, input { font: inherit; }
+button { border: 1px solid #98bea4; border-radius: 5px; padding: 11px 16px; background: #98bea4; color: #15241a; font-weight: 600; cursor: pointer; min-height: 44px; }
+button:hover:enabled { background: #b0d0ba; border-color: #b0d0ba; }
+button.secondary { background: transparent; color: #e5e9ed; border-color: #586674; }
+button.secondary:hover:enabled { background: #303c48; border-color: #93a3b3; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, input:focus-visible, pre:focus-visible { outline: 2px solid #bee1cb; outline-offset: 3px; }
+.server-state { display: flex; gap: 14px; align-items: baseline; margin-bottom: 20px; }
+.state { font-size: 13px; font-weight: 650; background: #35404c; color: #d8e0e7; padding: 5px 10px; border-radius: 4px; white-space: nowrap; }
+.state[data-state="running"] { background: #304c3b; color: #c4e4cd; }
+.state[data-state="starting"] { background: #4e442c; color: #f1dfa6; }
+.server-state p { color: #b8c4cf; line-height: 1.5; font-size: 14px; }
+.error { padding: 12px 14px; background: #483238; color: #f6d4da; border: 1px solid #78505a; border-radius: 4px; line-height: 1.5; margin-bottom: 18px; }
+.console { border: 1px solid #44515d; border-radius: 6px; overflow: hidden; background: #232d37; }
+.console-heading { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #44515d; }
+.follow { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #c5ced6; min-height: 28px; cursor: pointer; }
+input[type="checkbox"] { accent-color: #98bea4; width: 16px; height: 16px; margin: 0; }
+pre { background: #121a22; color: #d9e1e8; margin: 0; padding: 18px; height: min(50vh, 520px); min-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 ui-monospace, "Cascadia Code", "DejaVu Sans Mono", Consolas, monospace; tab-size: 4; }
+.console-status { background: #121a22; padding: 8px 18px 12px; color: #a6b5c3; font-size: 12px; border-bottom: 1px solid #44515d; }
+form { padding: 18px; }
+form > label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.command-row { display: flex; gap: 10px; }
+input[type="text"] { min-width: 0; width: 100%; background: #151e27; border: 1px solid #667788; color: #eef1f4; border-radius: 4px; padding: 10px 12px; font: 14px/1.5 ui-monospace, "Cascadia Code", "DejaVu Sans Mono", Consolas, monospace; }
+input[type="text"]::placeholder { color: #b0bdc9; }
+input:disabled { opacity: .65; }
+.command-row button { flex-shrink: 0; }
+#command-help { color: #b4c0cb; font-size: 12px; line-height: 1.5; margin-top: 10px; }
+footer { margin-top: 26px; color: #c1ccd6; font-size: 13px; line-height: 1.8; }
+footer h2 { color: #eef1f4; margin-bottom: 8px; }
+footer span { color: #c8d2da; margin-right: 6px; }
+footer span:not(:first-child) { margin-left: 22px; }
+code { color: #eef1f4; font: 13px ui-monospace, "DejaVu Sans Mono", Consolas, monospace; }
+.join-help { color: #adbac6; margin-top: 6px; }
+@media (max-width: 640px) {
+  main { padding: 24px 16px; }
+  header { flex-direction: column; align-items: stretch; gap: 18px; margin-bottom: 22px; }
+  h1 { font-size: 25px; }
+  .actions button { flex: 1; }
+  .server-state { flex-direction: column; gap: 8px; align-items: flex-start; }
+  .command-row { flex-direction: column; }
+  .console-heading, form { padding: 14px; }
+  pre { padding: 14px; height: 42vh; min-height: 260px; }
+  .console-status { padding-inline: 14px; }
+  footer span:not(:first-child) { margin-left: 12px; }
+}

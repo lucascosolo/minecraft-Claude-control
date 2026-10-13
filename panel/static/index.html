@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Control</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<!-- THESIS: A local operator desk keeps server controls beside the live Minecraft console.
+OWN-WORLD: Restrained slate, soft green action, system UI labels, monospaced output; no decorative telemetry.
+STORY: Check the real container state, start Minecraft, watch startup, then send console commands.
+FIRST VIEWPORT: A compact title and control row lead into one large console, with command entry at its foot and join addresses beneath.
+FORM: Brief-pinned conventional operator console; no random selection or invented seed.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+  <main>
+    <header>
+      <div><h1>Claude Control</h1><p class="subtitle">Your Minecraft server, from this desktop.</p></div>
+      <div class="actions"><button id="start" disabled>Start server</button><button id="stop" class="secondary" disabled>Stop server</button></div>
+    </header>
+    <section class="server-state" aria-label="Server state">
+      <span id="state" class="state" data-state="offline">Connecting</span>
+      <p id="status" role="status" aria-live="polite">Reading the container status…</p>
+    </section>
+    <p id="error" class="error" role="alert" hidden></p>
+    <section class="console" aria-labelledby="console-title">
+      <div class="console-heading"><h2 id="console-title">Console</h2><label class="follow"><input type="checkbox" id="autoscroll" checked> Follow output</label></div>
+      <pre id="output" tabindex="0" aria-label="Minecraft console output">Waiting for server output…</pre>
+      <p id="console-status" class="console-status" role="status">Output refreshes every second.</p>
+      <form id="command-form">
+        <label for="command">Console command</label>
+        <div class="command-row"><input id="command" type="text" autocomplete="off" spellcheck="false" placeholder="For example: list" maxlength="1024" disabled aria-describedby="command-help"><button id="send" type="submit" disabled>Send command</button></div>
+        <p id="command-help">Commands run with server console permissions. Minecraft must finish starting first.</p>
+      </form>
+    </section>
+    <footer><h2>Join from this PC</h2><p><span>Java</span> <code>localhost:25565</code> <span>Bedrock</span> <code>localhost</code>, port <code>19132</code></p><p class="join-help">On another device on your home network, use this desktop’s local IP address with the same ports.</p></footer>
+  </main>
+</body>
+</html>

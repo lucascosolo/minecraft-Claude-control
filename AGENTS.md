@@ -2,9 +2,11 @@
 
 Read `/home/lucas/.agents/AGENTS.md` before work. Its deletion rules apply.
 
-This is an incomplete recovered checkout. Run the read-only inventory
-`python3 tools/check_restoration.py` before treating it as buildable. Consult
-`MANIFEST.tsv` for provenance; do not describe newly written replacements as recovered files.
+The active, independently rebuilt plugin is in `core/`; root Gradle builds only
+that subproject. The historical `src/`, `_early/` and `deploy/` remain incomplete
+recovery material, preserved for later expansion. Run the read-only inventory
+`python3 tools/check_restoration.py` when auditing historical restoration. Consult
+`MANIFEST.tsv` for provenance; do not describe replacements as recovered files.
 
 Do not execute `deploy/test-entrypoint.sh`, `deploy/test-repair.sh`, container
 entrypoints or repair/deployment scripts until their deletion code is repaired
@@ -26,8 +28,18 @@ the deployment scripts, which have separate deletion code.
 
 Keep API keys, OAuth tokens and recovered live server config out of git and tool
 output. The bundled config has an empty key and defaults to `backend: api`.
-Actual API-key loading remains unverified while `PluginSettings.java` and its
-dependencies are missing. Do not make a billable API call without approval.
+The core's config-key loading, tool loop and caching have mock-based tests. Live
+API acceptance and provider cache hits still require the user's private key and
+an approved billable request. The pre-wipe live config was not recovered.
+Do not make a billable API call without approval.
+
+The prepared startup path is `tools/start_server.py`, `server/compose.yaml` and
+the localhost-only `panel/`. It uses fresh `run/server/` data, pinned checksummed
+Paper/Geyser/Floodgate assets, private config and archival replacements. Only
+the server data folder is mounted into Minecraft; never add the host home or
+Docker socket. The host panel controls only `claudecontrol-minecraft` and its
+RCON port is loopback-only. Current agent Docker access is unavailable; the
+user runs the startup helper in their normal terminal for the final host steps.
 
 The user's requested persona is ambitious about towns, infrastructure, adventures
 and ongoing stories. Preserve all existing trust, authorization and world-protection

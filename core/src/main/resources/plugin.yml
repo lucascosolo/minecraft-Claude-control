@@ -1,0 +1,19 @@
+name: ClaudeControl
+version: '${version}'
+main: com.lucascosolo.claudecontrol.core.ClaudeControlPlugin
+api-version: '26.2'
+description: An ambitious API-powered Minecraft companion with bounded world tools
+author: Lucas Cosolo
+softdepend: [floodgate]
+commands:
+  claude:
+    description: Ask Claude or administer the companion
+    usage: /claude ask|status|pause|resume|reload|reset|event
+    permission: claudecontrol.ask
+permissions:
+  claudecontrol.ask:
+    description: Ask Claude for help in Minecraft
+    default: true
+  claudecontrol.admin:
+    description: Claude administration requires op or a configured authenticated owner
+    default: op
