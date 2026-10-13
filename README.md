@@ -111,7 +111,7 @@ Docker/RCON. Docker boot, real Java/Bedrock clients and a paid Claude turn still
 need validation on your desktop.
 
 Current verification: 74 core tests, 17 panel tests, 21 startup-helper tests and
-13 upgrade-helper tests passed. The shaded plugin and its script worker were
+15 upgrade-helper tests passed. The shaded plugin and its script worker were
 built and checked. This does not replace
 the first live desktop session. Historical shell tests remain excluded.
 

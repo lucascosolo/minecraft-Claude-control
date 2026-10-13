@@ -14,6 +14,7 @@ import socket
 import stat
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 import uuid
@@ -261,6 +262,41 @@ def install_assets(root, assets, plugin, controller):
         write_preserving(root, relative, data)
 
 
+def crossplay_startup_state(logs):
+    """Inspect only the latest boot; a running Paper container is not cross-play proof."""
+    marker = "Starting minecraft server version"
+    if marker not in logs:
+        return "waiting"
+    current = logs.rsplit(marker, 1)[1]
+    if "Error occurred while enabling Geyser-Spigot" in current:
+        return "geyser-failed"
+    if "Disabling Geyser-Spigot" in current:
+        return "geyser-failed"
+    if ("Done (" in current and "Started Geyser on UDP port 19132" in current
+            and "ClaudeControl API core loaded" in current):
+        return "ready"
+    return "waiting"
+
+
+def finish_crossplay_start(controller, accounts, env, control_error):
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        try:
+            if not controller.status()["running"]:
+                break
+            status = crossplay_startup_state(controller.logs())
+            if status == "geyser-failed":
+                desktop.launch_panel(env)
+                raise RuntimeError("Minecraft started, but Geyser failed. Bedrock access is unavailable; inspect the panel. Whitelist protection remains enabled.")
+            if status == "ready":
+                return desktop.finish_start(controller, accounts, env, control_error)
+        except control_error:
+            pass
+        time.sleep(2)
+    desktop.launch_panel(env)
+    raise RuntimeError("Java/Bedrock readiness was not confirmed. Inspect http://127.0.0.1:8766; no player access was claimed.")
+
+
 def main():
     os.umask(0o077)
     if not sys.stdin.isatty():  # SAFETY-GUARD
@@ -320,7 +356,7 @@ def main():
     print("Starting Paper 26.3 with Java/Bedrock cross-play. Do not run an older launcher against this world.")
     command(["docker", "compose", "-p", "claudecontrol", "-f", str(PROJECT / "server/compose.yaml"),
              "up", "-d", "--build", "minecraft"], env=env, timeout=600)
-    desktop.finish_start(controller, accounts, env, ControlError)
+    finish_crossplay_start(controller, accounts, env, ControlError)
 
 
 if __name__ == "__main__":

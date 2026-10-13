@@ -252,6 +252,37 @@ class UpgradeTest(unittest.TestCase):
         self.assertEqual(set(assets), {"paper", "geyser", "floodgate", "viaversion", "viabackwards"})
         self.assertEqual((assets["paper"]["version"], assets["paper"]["build"]), ("26.3", 181))
 
+    def test_crossplay_readiness_requires_current_boot_paper_plugin_and_udp_listener(self):
+        boot = "[Server thread/INFO]: Starting minecraft server version 26.3\n"
+        core = "[ClaudeControl] ClaudeControl API core loaded; API configured; automatic events off\n"
+        done = 'Done (11.607s)! For help, type "help"\n'
+        udp = "[Geyser-Spigot] Started Geyser on UDP port 19132\n"
+        cases = {
+            "paper_and_rcon_only": (boot + done + "RCON running on 127.0.0.1:25575\n", "waiting"),
+            "healthy_crossplay": (boot + core + udp + done, "ready"),
+            "missing_boot_boundary": (core + udp + done, "waiting"),
+            "missing_core": (boot + udp + done, "waiting"),
+            "wrong_udp_port": (boot + core + udp.replace("19132", "19133") + done, "waiting"),
+        }
+        for scenario, (logs, expected) in cases.items():
+            with self.subTest(scenario=scenario):
+                self.assertEqual(self.helper.crossplay_startup_state(logs), expected)
+
+    def test_crossplay_failure_and_readiness_follow_latest_boot(self):
+        boot = "Starting minecraft server version 26.3\n"
+        healthy = boot + "ClaudeControl API core loaded\nStarted Geyser on UDP port 19132\nDone (1.0s)!\n"
+        failed = boot + "Error occurred while enabling Geyser-Spigot v2.11.3\nDone (1.0s)!\n"
+        cases = {
+            "paper_finished_geyser_failed": (failed, "geyser-failed"),
+            "healthy_then_failed": (healthy + failed, "geyser-failed"),
+            "failed_then_healthy": (failed + healthy, "ready"),
+            "healthy_then_starting": (healthy + boot, "waiting"),
+            "geyser_disabled_after_listener": (healthy + "Disabling Geyser-Spigot\n", "geyser-failed"),
+        }
+        for scenario, (logs, expected) in cases.items():
+            with self.subTest(scenario=scenario):
+                self.assertEqual(self.helper.crossplay_startup_state(logs), expected)
+
 
 class XmlResult(unittest.TextTestResult):
     def __init__(self, *args, **kwargs):

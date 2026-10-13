@@ -20,10 +20,15 @@ It then starts the container and the local console panel at
 Use Minecraft Java **26.3**, connecting to this PC's LAN address on port **25565**.
 In Bedrock, add the same LAN address with port **19132**. Geyser and Floodgate
 provide Bedrock access without requiring the Bedrock player to own Java.
-Paper 26.3 build 181, Geyser 2.11.3 build 1251, Floodgate 2.2.5 build 141,
+Paper 26.3 build 181, Geyser's official `pr.6712` preview build 3108, Floodgate 2.2.5 build 141,
 ViaVersion 5.12.1 and ViaBackwards 5.12.1 are pinned with SHA-256 in
-`server/versions-26.3.json`. ViaBackwards provides the 26.3 to 26.2 protocol bridge
-for the pinned Geyser; actual Java and Bedrock joins still need desktop verification.
+`server/versions-26.3.json`. The Geyser preview is required for Paper 26.3's native
+API changes; the previous stable Geyser failed during command-parser startup.
+The preview is experimental, as documented in the
+[official 26.3 pull request](https://github.com/GeyserMC/Geyser/pull/6712).
+ViaBackwards also permits supported older Java clients. Actual Bedrock joins
+still need desktop verification. The launcher requires Geyser's UDP listener and
+ClaudeControl startup confirmation before declaring cross-play ready.
 The upstream artifacts are documented by
 [Paper's build metadata](https://fill.papermc.io/v3/projects/paper/versions/26.3/builds/181),
 [ViaVersion's release](https://github.com/ViaVersion/ViaVersion/releases/tag/5.12.1)
