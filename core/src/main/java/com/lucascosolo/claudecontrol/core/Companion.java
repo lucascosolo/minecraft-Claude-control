@@ -17,6 +17,7 @@ public final class Companion {
     private final ClaudeControlPlugin plugin;
     private final NamespacedKey tag;
     private final MemoryStore registry;
+    private final Object identityLock=new Object();
     private volatile UUID knownId;
     private Mannequin body;
     private BukkitTask timer;
@@ -42,7 +43,9 @@ public final class Companion {
         timer=Bukkit.getScheduler().runTaskTimer(plugin,this::tick,1,1);
     }
     public void persistIdentity() throws Exception {
-        UUID id=knownId;if(id!=null && !registry.read("body-uuid.txt").trim().equals(id.toString()))registry.write("body-uuid.txt",id.toString());
+        synchronized(identityLock) {
+            UUID id=knownId;if(id!=null && !registry.read("body-uuid.txt").trim().equals(id.toString()))registry.write("body-uuid.txt",id.toString());
+        }
     }
     private void adopt() {
         if(body!=null && body.isValid() && !body.isDead())return;
@@ -65,8 +68,9 @@ public final class Companion {
         Player actor=plugin.authorizedActor(turn);String action=input.get("action").getAsString();
         if(action.equals("status"))return new ToolReply(status(),false);
         if(turn.event())return new ToolReply("Automatic events cannot control Claude's body",true);
-        if(plugin.isPaused() && !action.equals("stay"))return new ToolReply("Claude is paused; an owner must resume before controlling the body",true);
-        if(job!=null && !action.equals("stay"))return new ToolReply("Claude is finishing a physical building job; use status",true);
+        if(plugin.isPaused() && !Set.of("stay","dismiss").contains(action))return new ToolReply("Claude is paused; an owner must resume before controlling the body",true);
+        if(action.equals("dismiss") && !plugin.currentOwner(turn))return new ToolReply("Only a currently authorized owner may dismiss Claude's body",true);
+        if(job!=null && !Set.of("stay","dismiss").contains(action))return new ToolReply("Claude is finishing a physical building job; use status",true);
         if(job!=null && controller!=null && !controller.actorId().equals(turn.actorId()) && !plugin.currentOwner(turn))
             return new ToolReply("Only the initiating player or an owner can stop this building job",true);
         adopt();
@@ -85,6 +89,15 @@ public final class Companion {
         if(!body.getWorld().equals(actor.getWorld()) || body.getLocation().distanceSquared(actor.getLocation())>32*32)
             return new ToolReply("Control Claude while nearby in the same world",true);
         switch(action) {
+            case "dismiss" -> {
+                stop("Body dismissed; completed physical placements remain");
+                synchronized(identityLock) {
+                    try {registry.write("body-uuid.txt","");}
+                    catch(Exception failure) {return new ToolReply("Could not preserve the body identity change; Claude's body was kept",true);}
+                    body.remove();body=null;knownId=null;outcome="Dismissed";
+                }
+                return new ToolReply("Claude's body was dismissed. Memory and builds are preserved; summon again whenever you like",false);
+            }
             case "stay" -> {finishJob("Stopped by request",true);halt("Staying here");}
             case "wave" -> {look(actor.getEyeLocation());body.swingMainHand();outcome="Waved";}
             case "follow" -> {halt("Following nearby actor");controller=turn;following=true;deadline=Long.MAX_VALUE;}
@@ -97,6 +110,31 @@ public final class Companion {
             default -> {return new ToolReply("Unknown companion action",true);}
         }
         return new ToolReply(status(),false);
+    }
+    /** Read-only batch admission for managed experiences; never adopts or spawns. */
+    void preflightExperience(JsonObject input,Turn turn) {
+        Player actor=plugin.authorizedActor(turn);
+        String action=ExperienceSpec.text(input,"action",32,true);
+        if(!Set.of("status","stay","wave","summon","dismiss").contains(action))
+            throw new IllegalArgumentException("Experience callbacks support immediate companion actions only");
+        if(action.equals("status"))return;
+        if(turn.event() || (plugin.isPaused() && !Set.of("stay","dismiss").contains(action)))
+            throw new IllegalArgumentException("Companion action is not currently permitted");
+        boolean owner=plugin.currentOwner(turn);
+        if(action.equals("dismiss") && !owner)throw new IllegalArgumentException("Dismiss requires an owner");
+        if(job!=null && (!Set.of("stay","dismiss").contains(action)
+            || (controller!=null && !controller.actorId().equals(turn.actorId()) && !owner)))
+            throw new IllegalArgumentException("Physical job prevents this companion action");
+        boolean loaded=body!=null && body.isValid() && !body.isDead();
+        if(action.equals("summon")) {
+            if(loaded)return;
+            if(knownId!=null || anyTaggedLoaded() || findSummon(actor)==null)
+                throw new IllegalArgumentException("No safe summon; existing body may be unloaded");
+            return;
+        }
+        if(!loaded || !body.getWorld().equals(actor.getWorld())
+            || body.getLocation().distanceSquared(actor.getLocation())>32*32)
+            throw new IllegalArgumentException("Companion must be loaded and nearby");
     }
     private boolean anyTaggedLoaded() {
         for(World w:Bukkit.getWorlds())for(Entity e:w.getEntities())if(e.getPersistentDataContainer().has(tag,PersistentDataType.BYTE))return true;return false;

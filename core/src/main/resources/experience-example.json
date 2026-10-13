@@ -1,0 +1,8 @@
+{
+  "id": "shared_sparks",
+  "title": "Shared Sparks",
+  "description": "Right-click crafting tables three times together to kindle a celebration. Only joined players contribute. Use /claude addons trigger shared_sparks for a hint.",
+  "script_events": ["join", "manual"],
+  "rules": [{"id":"kindle","event":"interact","material":"CRAFTING_TABLE","threshold":3,"shared":true,"once":true,"function":"festival"}],
+  "script": "function onEvent(event,state,game){game.emit({type:'chat',args:{message:'Shared Sparks: right-click a crafting table. Three shared touches light our first festival.'}});} function festival(event,state,game){state.festivals=(state.festivals||0)+1;game.emit({type:'title',args:{title:'The sparks are awake!',subtitle:'A little festival for our growing town'}});game.emit({type:'particle',args:{particle:'END_ROD',count:24}});game.emit({type:'sound',args:{sound:'BLOCK_NOTE_BLOCK_CHIME',volume:0.7,pitch:1.2}});game.emit({type:'chat',args:{message:'Together we kindled the first sparks. Take some bread, then choose where our town grows next.'}});game.emit({type:'give_item',args:{material:'BREAD',amount:3}});}"
+}

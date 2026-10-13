@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.lucascosolo"
-version = "0.4.0"
+version = "0.5.0"
 
 java { toolchain.languageVersion = JavaLanguageVersion.of(25) }
 
@@ -16,6 +16,7 @@ repositories {
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.2.build.133-stable")
     implementation("com.google.code.gson:gson:2.14.0")
+    implementation("org.mozilla:rhino:1.9.1")
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -31,6 +32,7 @@ tasks {
         archiveFileName = "ClaudeControl.jar"
         archiveClassifier = ""
         relocate("com.google.gson", "com.lucascosolo.claudecontrol.core.lib.gson")
+        relocate("org.mozilla.javascript", "com.lucascosolo.claudecontrol.core.lib.rhino")
     }
     build { dependsOn(shadowJar) }
 }

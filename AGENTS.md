@@ -33,7 +33,7 @@ API acceptance and provider cache hits still require the user's private key and
 an approved billable request. The pre-wipe live config was not recovered.
 Do not make a billable API call without approval.
 
-The prepared startup path is `tools/start_desktop.py`, `server/compose.yaml` and
+The prepared startup path is `tools/start_26_3.py`, `server/compose.yaml` and
 the localhost-only `panel/`. It uses fresh `run/server/` data, pinned checksummed
 Paper/Geyser/Floodgate assets, private config and archival replacements. Only
 the server data folder is mounted into Minecraft; never add the host home or
@@ -45,6 +45,20 @@ The guarded original `tools/start_server.py` remains a tested helper library;
 its main is superseded by `start_desktop.py`. The safety hook refused edits to
 the original launcher. Keep its guards intact. The new entry point confirms
 container mounts and asynchronous whitelist results before claiming join readiness.
+
+`start_26_3.py` supersedes both prior launcher mains. It stages pinned Paper 26.3
+and ViaVersion/ViaBackwards bridges, takes a complete private backup of the stopped
+server before replacement, and refuses newer-world downgrades. Historical 26.2
+manifests remain provenance; use `server/versions-26.3.json` for current setup.
+
+Managed experiences use bounded JSON definitions and JavaScript callbacks with
+explicit player participation. Scripts have only plain event/state data and a
+validated game-action emitter; no Java classes, filesystem, networking, console
+commands or API transport. Keep script execution in its bounded owned child process.
+Hot reload must retain valid state, reject invalid replacements and invalidate old
+callbacks before effects. Validate whole action batches before persistence/mutation.
+Companion dismiss removes only the loaded nearby entity, archives its identity,
+and preserves memory/builds. Existing world protection and owner checks remain.
 
 The user's requested persona is ambitious about towns, infrastructure, adventures
 and ongoing stories. Preserve all existing trust, authorization and world-protection

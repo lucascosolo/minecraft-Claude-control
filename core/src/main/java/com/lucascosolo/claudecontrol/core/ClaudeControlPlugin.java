@@ -28,6 +28,9 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
     private MemoryStore memory;
     private GameTools tools;
     private Companion companion;
+    private ExperienceManager experiences;
+    public ExperienceManager experiences(){return experiences;}
+    GameTools gameTools(){return tools;}
     private BukkitTask eventTimer;
     private final Map<UUID,ArrayDeque<Long>> rates=new HashMap<>();
     private final ArrayDeque<Long> serverRates=new ArrayDeque<>();
@@ -50,6 +53,8 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
                 catch(Exception e){lastOutcome="Worker operation failed; consult configuration";getLogger().warning(lastOutcome);}
             });
             companion=new Companion(this);
+            experiences=new ExperienceManager(this);
+            experiences.start();
             queue.offer(()->{try{companion.persistIdentity();}catch(Exception e){lastOutcome="Companion identity persistence failed";}});
             Objects.requireNonNull(getCommand("claude")).setExecutor(this);
             Bukkit.getPluginManager().registerEvents(this,this);
@@ -91,6 +96,7 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
     }
     @Override public boolean onCommand(CommandSender sender,Command command,String label,String[] args) {
         String action=args.length==0?"status":args[0].toLowerCase(Locale.ROOT);
+        if(action.equals("addons")) return experiences.command(sender,args);
         if(action.equals("companion")) {
             if(!(sender instanceof Player player) || !player.hasPermission("claudecontrol.ask")){sender.sendMessage("Control the companion from an authenticated permitted player account.");return true;}
             com.google.gson.JsonObject input=new com.google.gson.JsonObject();input.addProperty("action",args.length>1?args[1].toLowerCase(Locale.ROOT):"status");
@@ -100,14 +106,14 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
                     input.addProperty("x",Integer.parseInt(args[2]));input.addProperty("y",Integer.parseInt(args[3]));input.addProperty("z",Integer.parseInt(args[4]));
                 }
                 Turn turn=new Turn(player.getUniqueId(),player.getName(),settings.isOwner(player.getUniqueId(),player.getName(),player.isOp()),"Explicit companion control",false);
-                if(Set.of("stay","status").contains(input.get("action").getAsString())) {
+                if(Set.of("stay","status","dismiss").contains(input.get("action").getAsString())) {
                     sender.sendMessage(settings.chatPrefix()+companion.action(input,turn).text());return true;
                 }
                 if(!queue.offer(()->{
                     try{ToolReply result=tools.execute("companion",input,turn);tellPlayer(turn.actorId(),settings.chatPrefix()+result.text());}
                     catch(Exception e){tellPlayer(turn.actorId(),"Claude's companion action was refused; check loaded safe ground and permissions.");}
                 }))sender.sendMessage("Claude's queue is full; retry shortly.");
-            }catch(Exception e){sender.sendMessage("Usage: /claude companion summon|follow|stay|wave|status|move <x> <y> <z>");}
+            }catch(Exception e){sender.sendMessage("Usage: /claude companion summon|follow|stay|dismiss|wave|status|move <x> <y> <z>");}
             return true;
         }
         if(action.equals("ask")) {
@@ -241,6 +247,7 @@ public final class ClaudeControlPlugin extends JavaPlugin implements Listener, C
     @Override public void onDisable() {
         stopping=true;paused=true;
         if(eventTimer!=null)eventTimer.cancel();
+        if(experiences!=null)experiences.close();
         if(companion!=null)companion.close();
         pending.forEach(future->future.cancel(false));pending.clear();
         Bukkit.getScheduler().cancelTasks(this);

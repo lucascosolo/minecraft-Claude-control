@@ -8,7 +8,7 @@ softdepend: [floodgate]
 commands:
   claude:
     description: Ask Claude or administer the companion
-    usage: /claude ask|companion|status|pause|resume|reload|reset|event
+    usage: /claude ask|companion|addons|status|pause|resume|reload|reset|event
     permission: claudecontrol.ask
 permissions:
   claudecontrol.ask:

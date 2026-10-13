@@ -2,7 +2,7 @@
 
 Claude joins your Minecraft conversations through the Anthropic API, inspects
 nearby terrain, builds on clear ground, gives basic supplies, and keeps durable
-notes. The rebuilt core runs on Paper 26.2 with Geyser and Floodgate for Java
+notes. The rebuilt core runs on Paper 26.3 with Geyser, Floodgate and protocol bridges for Java
 and Bedrock players. The recovered advanced implementation is preserved separately.
 
 ## Start on this desktop
@@ -10,7 +10,7 @@ and Bedrock players. The recovered advanced implementation is preserved separate
 Run this in your normal terminal:
 
 ```sh
-python3 /home/lucas/Workspaces/minecraft-Claude-control/tools/start_desktop.py
+python3 /home/lucas/Workspaces/minecraft-Claude-control/tools/start_26_3.py
 ```
 
 The helper checks Docker, builds the plugin, verifies official server downloads,
@@ -18,6 +18,10 @@ asks for your two player identities and privately accepts your API key. After
 you accept the Minecraft EULA, it starts the server container and the console
 panel at <http://127.0.0.1:8766>. It makes no Claude API request.
 See [server setup](server/README.md) for joining, ports and stopping the server.
+On an existing server, it verifies downloads, stops gracefully, preserves a
+complete private backup, and installs the update before restarting. Existing
+accounts, key, whitelist and world remain in place. Use this launcher for future
+starts; the historical 26.2 launchers are superseded.
 
 The key lives in the private, gitignored file
 `run/server/plugins/ClaudeControl/config.yml`, under `api-key`. A nonblank
@@ -33,7 +37,7 @@ stages with you.
 
 Claude has a visible character without requiring another Minecraft account.
 Use `/claude companion summon` on clear level ground, then
-`/claude companion follow`, `wave`, `stay` or `status`. These direct controls
+`/claude companion follow`, `wave`, `stay`, `dismiss` or `status`. These direct controls
 make no API calls. Through conversation, Claude can perform small physical
 building jobs, or gesture while conjuring larger structures and changing time
 or weather. It is kind, playful and powerful, and seeks fun things you can do
@@ -45,6 +49,34 @@ and report partial work honestly. Larger builds use the instant bounded build
 tool. Owner-authorized world effects can reach all server worlds; remote building
 uses loaded chunks and protects existing structures. Both client renderings and
 physical animations still need a live check.
+
+## Managed interactive experiences
+
+Claude can create JSON addon definitions with event listeners, simple progress
+rules and JavaScript callbacks. Rules can invoke named script functions; scripts
+can also listen directly to events. Saved state supports shared puzzles, games,
+performances and other interactive experiences. Reload works while playing and
+keeps progress; an invalid replacement keeps the previous working definition.
+
+Scripts receive event data, state and `game.emit({type,args})` for managed chat,
+titles, sounds, particles, basic gifts, small protected builds, owner-authorized
+world effects and immediate companion actions. Scripts run in a bounded Java
+worker and have no Java classes, files, network, console commands or API access.
+Callbacks incur no Anthropic usage. Claude's requests to author them do.
+
+Both players can test the bundled example without an API request:
+
+```text
+/claude addons list
+/claude addons join shared_sparks
+```
+
+Right-click a crafting table three times between you to trigger the scripted
+celebration. Use `/claude addons trigger shared_sparks` for a hint and
+`/claude addons leave shared_sparks` to opt out. Owners can reload, enable,
+disable or reset an experience with `/claude addons <action> <id>`.
+You can ask Claude to create a new experience through the `experience` tool.
+Definitions and progress live privately under `plugins/ClaudeControl/experiences/`.
 
 ## Tools and limits
 
@@ -78,8 +110,9 @@ handling and caching. Panel and startup tests use scratch data and fake
 Docker/RCON. Docker boot, real Java/Bedrock clients and a paid Claude turn still
 need validation on your desktop.
 
-Current verification: 52 core tests, 17 panel tests and 21 startup-helper tests
-passed, and the shaded plugin jar was built and inspected. This does not replace
+Current verification: 74 core tests, 17 panel tests, 21 startup-helper tests and
+13 upgrade-helper tests passed. The shaded plugin and its script worker were
+built and checked. This does not replace
 the first live desktop session. Historical shell tests remain excluded.
 
 Historical `src/`, `_early/` and `deploy/` are incomplete recovery material.
