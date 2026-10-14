@@ -582,7 +582,7 @@ public final class Companion {
             throw new IllegalStateException("Block beyond physical reach");
         body.getEquipment().setItemInMainHand(new ItemStack(job.materials.get(op)));
         look(new Location(body.getWorld(),x+0.5,y+0.5,z+0.5));body.swingMainHand();
-        block.setType(job.materials.get(op),false);job.placed++;job.index++;
+        block.setBlockData(GameTools.placementData(op),false);job.placed++;job.index++;
         ConnectedBlocks.refresh(block);
     }
     private void finishJob(String reason,boolean error) {

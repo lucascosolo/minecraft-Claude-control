@@ -52,6 +52,7 @@ public final class GameTools implements ToolExecutor {
             if(!Set.of("build","build_in_character").contains(name))continue;
             JsonObject item=tool.getAsJsonObject("input_schema").getAsJsonObject("properties").getAsJsonObject("operations").getAsJsonObject("items");
             JsonObject fields=item.getAsJsonObject("properties");
+            fields.add("block_data",JsonParser.parseString("{\"type\":\"string\",\"maxLength\":512,\"description\":\"Optional exact Minecraft block state matching material, e.g. minecraft:spruce_slab[type=top,waterlogged=false] or minecraft:oak_stairs[facing=north,half=bottom]. No NBT or waterlogged=true.\"}"));
             fields.add("shape",JsonParser.parseString("{\"type\":\"string\",\"enum\":[\"box\"]}"));
             fields.add("mode",JsonParser.parseString("{\"type\":\"string\",\"enum\":[\"solid\",\"shell\",\"omit\"]}"));
             for(String endpoint:List.of("x2","y2","z2"))fields.add(endpoint,JsonParser.parseString("{\"type\":\"integer\"}"));
@@ -86,6 +87,10 @@ public final class GameTools implements ToolExecutor {
         definitions.add(JsonParser.parseString("""
           {"name":"copy_structure","description":"Owner-only compact copy of an existing loaded structure in one world. Source {world,x,y,z,width,height,depth}, destination {x,y,z}; at most32 per side and8192 cells. Entire destination must be empty or natural vegetation, including source-air gaps. Volumes must not overlap. Copies non-air block data and orientation; skips source containers/block entities and reports their count. Refuses hazards, liquids and waterlogged source blocks. Full source/destination border, loaded-chunk, obstruction and living-entity preflight before any placement; source stays unchanged. Events and autonomous initiative cannot use it.","input_schema":{"type":"object","additionalProperties":false,"properties":{"source":{"type":"object","additionalProperties":false,"properties":{"world":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"},"width":{"type":"integer","minimum":1,"maximum":32},"height":{"type":"integer","minimum":1,"maximum":32},"depth":{"type":"integer","minimum":1,"maximum":32}},"required":["world","x","y","z","width","height","depth"]},"destination":{"type":"object","additionalProperties":false,"properties":{"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"}},"required":["x","y","z"]}},"required":["source","destination"]}}
           """));
+        for(var entry:definitions){JsonObject tool=entry.getAsJsonObject();
+            if(tool.get("name").getAsString().equals("survey_blocks"))tool.addProperty("description",tool.get("description").getAsString()+" block_states shares palette indices and reports exact slab height, facing and other native properties. Small volumes also include horizontal_layers: exact north-to-south rows, west-to-east characters keyed by legend; use these to trace each wall and angled corner rather than guessing symmetry.");
+            if(Set.of("build","build_in_character","check_build").contains(tool.get("name").getAsString()))tool.addProperty("description",tool.get("description").getAsString()+" Optional operation block_data sets exact native states matching material (slab type, stair facing/half, log axis). Invalid properties fail before placement. For box shapes each omitted x2/y2/z2 defaults to its starting axis coordinate.");
+        }
         return definitions;
     }
     @Override public ToolReply execute(String name, JsonObject args, Turn turn) throws Exception {
@@ -408,15 +413,23 @@ public final class GameTools implements ToolExecutor {
         SurveySpec spec=SurveySpec.parse(args);World world=nearbyWorld(spec.world(),actor);
         List<SurveySpec.Cell> cells=spec.cells();for(var cell:cells){nearbyCell(actor,cell.x(),cell.y(),cell.z());checkLocation(world,cell.x(),cell.y(),cell.z());}
         List<LivingEntity> living=livingIn(world,new BoundingBox(spec.x(),spec.y(),spec.z(),spec.x()+spec.width(),spec.y()+spec.height()+2,spec.z()+spec.depth()));
-        Map<SurveySpec.Cell,LandscapeSpec.Snapshot> observed=new LinkedHashMap<>();Map<String,Integer> paletteIds=new LinkedHashMap<>();JsonArray palette=new JsonArray(),runs=new JsonArray();int priorMaterial=-1,priorFlags=-1,count=0;
+        Map<SurveySpec.Cell,LandscapeSpec.Snapshot> observed=new LinkedHashMap<>();Map<String,Integer> paletteIds=new LinkedHashMap<>();JsonArray palette=new JsonArray(),states=new JsonArray(),runs=new JsonArray();int priorMaterial=-1,priorFlags=-1,count=0;
+        List<Integer> layerIndices=new ArrayList<>();
         for(var cell:cells){
             Block block=world.getBlockAt(cell.x(),cell.y(),cell.z());String material=block.getType().name();boolean protectedState=block.getState() instanceof TileState || block.getState() instanceof Container;
             boolean occupied=livingAt(living,cell.x(),cell.y(),cell.z(),true);observed.put(cell,new LandscapeSpec.Snapshot(material,protectedState,occupied,true));
-            int index=paletteIds.computeIfAbsent(material,key->{palette.add(key);return palette.size()-1;}),flags=(protectedState?1:0)|(occupied?2:0);
+            String state=block.getBlockData().getAsString();
+            int index=paletteIds.computeIfAbsent(state,key->{palette.add(material);states.add(key);return palette.size()-1;}),flags=(protectedState?1:0)|(occupied?2:0);
+            layerIndices.add(index);
             if(index==priorMaterial && flags==priorFlags)count++;else{if(count>0)appendRun(runs,priorMaterial,priorFlags,count);priorMaterial=index;priorFlags=flags;count=1;}
         }
         appendRun(runs,priorMaterial,priorFlags,count);
         String id=UUID.randomUUID().toString();JsonObject output=new JsonObject();output.addProperty("survey_id",id);output.addProperty("world",world.getName());output.add("origin",JsonParser.parseString("["+spec.x()+","+spec.y()+","+spec.z()+"]"));output.add("dimensions",JsonParser.parseString("["+spec.width()+","+spec.height()+","+spec.depth()+"]"));output.addProperty("order","x/y/z; z advances fastest");output.addProperty("cell_count",cells.size());output.add("palette",palette);output.add("runs",runs);output.addProperty("flags","1=protected tile/container;2=living entity or its support. Every requested cell represented; no sampling. Receipt expires after10 minutes.");
+        output.add("block_states",states);output.addProperty("palette_note","palette and block_states share indices; the same material can have different states. Read slab type, stair facing/half and attachment properties before design decisions.");
+        if(spec.height()<=8 && cells.size()<=2048 && palette.size()<=64){
+            output.add("horizontal_layers",SurveyLayers.encode(spec.width(),spec.height(),spec.depth(),layerIndices));
+            if(output.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>7500)output.remove("horizontal_layers");
+        }
         String text=output.toString();if(text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>7500)return error("SURVEY_RESPONSE_TOO_LARGE: Exact data exceeds the safe API receipt size. Request smaller adjacent volumes; no partial or sampled receipt was created.");
         long now=System.currentTimeMillis();surveyReceipts.entrySet().removeIf(entry->entry.getValue().expires()<now);
         while(surveyReceipts.size()>=16)surveyReceipts.remove(surveyReceipts.keySet().iterator().next());
@@ -486,6 +499,7 @@ public final class GameTools implements ToolExecutor {
             if(material==null || !material.isBlock() || material.isAir() || !BuildSpec.safeMaterial(material.name()))
                 throw new WorldRefusal("BUILD_MATERIAL_UNSUPPORTED","A planned material is unavailable, hazardous or not a block");
             materials.put(op,material);
+            placementData(op); // Validate every native property before any placement or physical job starts.
         }
         // Validate every location and obstruction before changing the first block.
         for(int dx=0;dx<s.width();dx++) for(int dy=0;dy<s.height();dy++) for(int dz=0;dz<s.depth();dz++) {
@@ -500,7 +514,7 @@ public final class GameTools implements ToolExecutor {
         Map<BuildSpec.BlockPlacement,Material> materials=plan.materials();
         List<ConnectedBlocks.BlockPos> placed=new ArrayList<>();
         for(var entry:materials.entrySet()) {
-            var op=entry.getKey();w.getBlockAt(s.x()+op.x(),s.y()+op.y(),s.z()+op.z()).setType(entry.getValue(),false);
+            var op=entry.getKey();w.getBlockAt(s.x()+op.x(),s.y()+op.y(),s.z()+op.z()).setBlockData(placementData(op),false);
             placed.add(new ConnectedBlocks.BlockPos(s.x()+op.x(),s.y()+op.y(),s.z()+op.z()));
         }
         String connections=refreshConnections(w,placed,Set.of());
@@ -509,6 +523,10 @@ public final class GameTools implements ToolExecutor {
         return ok(result + connections + ". Record future stages with memory.");
     }
     private record CopyPlacement(ConnectedBlocks.BlockPos destination,org.bukkit.block.data.BlockData data) {}
+    static org.bukkit.block.data.BlockData placementData(BuildSpec.BlockPlacement op){
+        try{return op.blockData().isEmpty()?Objects.requireNonNull(Material.matchMaterial(op.material())).createBlockData():Bukkit.createBlockData(op.blockData());}
+        catch(RuntimeException invalid){throw new WorldRefusal("BUILD_BLOCK_STATE_INVALID","Block state properties are unavailable for "+op.material()+"; check property names and values.");}
+    }
     private record TeleportDestination(UUID player,UUID world,CompletableFuture<Chunk> loaded) {}
     private ToolReply copyStructure(JsonObject args,boolean owner,Turn turn) {
         if(!owner || turn.event())return error("COPY_OWNER_REQUIRED: Current owner authorization from an authenticated player request is required.");

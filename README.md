@@ -137,6 +137,12 @@ Both complete volumes are inspected; destinations must be clear. New constructio
 refreshes nearby pane, fence, wall and stair connections without general physics.
 Bundled architectural guidance covers palettes, proportions, circulation and roofs;
 all construction and inspection stay inside Minecraft, with no external preview.
+Exact surveys include native block states and, for small volumes, horizontal maps
+that expose angled footprints. Build operations accept matching `block_data` for
+slab height, stair direction and log axis, validated before any placement. Box
+endpoints omitted on an axis default to that axis's start. Bundled reasoning
+effort is high; tool results can lead to repeated model decisions within the
+configured turn limits. Existing private configuration is preserved by updates.
 
 Claude's observations include current and queued work, interrupted requests and
 recent nearby public conversation. Casual remarks can inspire scheduled choices
@@ -172,7 +178,7 @@ handling and caching. Panel and startup tests use scratch data and fake
 Docker/RCON. Docker boot, real Java/Bedrock clients and a paid Claude turn still
 need validation on your desktop.
 
-Current verification: 229 core tests, 17 panel tests, 25 startup-helper tests,
+Current verification: 242 core tests, 17 panel tests, 25 startup-helper tests,
 18 upgrade-helper tests and 14 runtime-update tests passed. The shaded plugin and its script worker were
 built and checked. This does not replace
 the first live desktop session. Historical shell tests remain excluded.

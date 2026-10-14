@@ -3,7 +3,7 @@
 backend: api
 api-key: ''
 model: claude-opus-5-5
-effort: low
+effort: high
 max-tokens: 8192
 max-tool-iterations: 8
 # Applied both globally across the server and separately to each player.

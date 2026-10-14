@@ -76,7 +76,7 @@ class CompactBuildSpecTest {
                 assertThrows(IllegalArgumentException.class, () -> BuildSpec.parse(plan), field);
             }
         }
-        for (String missing : List.of("x2","y2","z2","material")) {
+        for (String missing : List.of("material")) {
             JsonObject plan = plan(2,2,2);
             JsonObject shape = box(0,0,0,1,1,1,"solid","STONE");
             shape.remove(missing); add(plan,shape);
