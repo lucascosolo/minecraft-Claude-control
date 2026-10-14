@@ -50,11 +50,26 @@ Through conversation it can choose a 10–60 second wandering or movement plan,
 which runs without additional API calls and yields to new requests and jobs.
 When terrain blocks
 companionship, Claude can catch up beside a nearby permitted player on verified
-clear loaded ground, with a small particle effect. Physical jobs place up to 16 blocks in sequence
+clear loaded ground, with a small particle effect. When friends travel farther
+away or into another world, the existing loaded body can also catch up there;
+a 15-second cooldown prevents constant teleporting. It never moves players,
+loads chunks or duplicates an unloaded body. Physical jobs place up to 16 blocks in sequence
 and report partial work honestly. Larger builds use the instant bounded build
 tool. Owner-authorized world effects can reach all server worlds; remote building
 uses loaded chunks and protects existing structures. Both client renderings and
 physical animations still need a live check.
+
+Claude also chooses an occasional new activity through the API every 30–45 minutes
+of active play. This is the owner's selected pacing; it starts enabled after this
+update, honors a saved explicit off setting, and pauses when no owner is online,
+the body is unavailable, Claude is paused, or a player request/job takes priority.
+Those planning turns use your configured API key; wandering and catch-up do not.
+Use `/claude initiative status` or `/claude initiative off` to inspect or stop it.
+Initiative permits one small gift or protected build per turn, and can stage new
+opt-in experiences. It cannot run console commands, move players, alter time or
+weather, or overwrite existing addons. New requests interrupt autonomous effects.
+Its long-term direction is gentle, optional readiness for the Ender Dragon,
+without deadlines or reminders when you want to enjoy something else.
 
 The initial runtime-loader update uses `python3 tools/start_26_3.py` and requires
 one server restart. Thereafter, build the plugin and run
@@ -126,7 +141,7 @@ handling and caching. Panel and startup tests use scratch data and fake
 Docker/RCON. Docker boot, real Java/Bedrock clients and a paid Claude turn still
 need validation on your desktop.
 
-Current verification: 102 core tests, 17 panel tests, 22 startup-helper tests,
+Current verification: 121 core tests, 17 panel tests, 22 startup-helper tests,
 15 upgrade-helper tests and 12 runtime-update tests passed. The shaded plugin and its script worker were
 built and checked. This does not replace
 the first live desktop session. Historical shell tests remain excluded.

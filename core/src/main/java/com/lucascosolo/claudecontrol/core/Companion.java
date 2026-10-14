@@ -31,6 +31,7 @@ public final class Companion {
     private long wanderUntil;
     private long listeningUntil;
     private long designUntil;
+    private long lastCatchUp;
     private Location jumpStart;
     private List<CompanionPlan.Cell> route=List.of();
     private int step,level,ticks,stalled;
@@ -195,13 +196,23 @@ public final class Companion {
         if(!keepCompany || System.currentTimeMillis()<Math.max(listeningUntil,designUntil))return;
         adopt();
         if(body==null || !body.isValid() || body.isDead())return;
-        Location here=body.getLocation();Player nearest=null;double distance=32*32;
+        Location here=body.getLocation();Player nearest=null;double distance=Double.MAX_VALUE;
         for(Player candidate:body.getWorld().getPlayers()) {
             if(!candidate.isOnline() || !candidate.hasPermission("claudecontrol.ask") || candidate.getGameMode()==GameMode.SPECTATOR)continue;
             double next=here.distanceSquared(candidate.getLocation());
             if(next<distance){nearest=candidate;distance=next;}
         }
-        if(nearest==null){halt("Waiting for nearby friends");return;}
+        if(nearest==null) {
+            for(Player candidate:Bukkit.getOnlinePlayers())
+                if(candidate.hasPermission("claudecontrol.ask") && candidate.getGameMode()!=GameMode.SPECTATOR) {nearest=candidate;distance=0;break;}
+        }
+        if(nearest==null){halt("Waiting for friends to return");return;}
+        boolean sameWorld=body.getWorld().equals(nearest.getWorld());
+        if(!sameWorld || distance>24*24) {
+            if(CompanionPresence.catchUp(sameWorld,distance,false,System.currentTimeMillis(),lastCatchUp))catchUp(nearest);
+            else halt("Waiting before catching up to friends");
+            return;
+        }
         Turn nearby=new Turn(nearest.getUniqueId(),nearest.getName(),false,"Keeping nearby players company",false);
         plugin.authorizedActor(nearby);
         controller=nearby;following=true;deadline=Long.MAX_VALUE;
@@ -230,15 +241,53 @@ public final class Companion {
         for(int[] delta:new int[][]{{2,0},{-2,0},{0,2},{0,-2}})
             for(int dy:new int[]{0,1,-1})
                 if(planTerrain(target.getBlockX()+delta[0],target.getBlockY()+dy,target.getBlockZ()+delta[1])) {outcome="Walking with you";return;}
-        // Terrain can prevent the bounded same-level walk. Only the existing body may catch up,
-        // beside an authorized nearby actor on verified clear loaded ground inside the world border.
-        Location spot=findSummon(nearest);
+        if(CompanionPresence.catchUp(true,distance,false,now,lastCatchUp))catchUp(nearest);
+        else {terrain=List.of();terrainStep=0;outcome="Waiting before a safe catch-up";}
+    }
+    private void catchUp(Player friend) {
+        Turn identity=new Turn(friend.getUniqueId(),friend.getName(),false,"Keeping friends company",false);
+        plugin.authorizedActor(identity);
+        Location spot=findSummon(friend);
+        halt("Catching up to friends");
         route=List.of();step=0;terrain=List.of();terrainStep=0;body.setVelocity(new Vector());body.setImmovable(true);
         if(spot==null){outcome="Waiting for safe ground near you";return;}
         if(body.teleport(spot)) {
+            lastCatchUp=System.currentTimeMillis();controller=identity;following=true;deadline=Long.MAX_VALUE;
             body.getWorld().spawnParticle(Particle.END_ROD,spot.clone().add(0,1,0),8,0.2,0.4,0.2,0.01);
-            look(nearest.getEyeLocation());outcome="Caught up beside you";
+            look(friend.getEyeLocation());outcome="Caught up beside you";
         }
+    }
+    public boolean readyForPlan() {
+        return keepCompany && !plugin.isPaused() && body!=null && body.isValid() && !body.isDead()
+            && job==null && System.currentTimeMillis()>=Math.max(listeningUntil,designUntil);
+    }
+    public boolean near(Player actor) {
+        return body!=null && body.isValid() && !body.isDead() && actor.isOnline()
+            && actor.getGameMode()!=GameMode.SPECTATOR && body.getWorld().equals(actor.getWorld())
+            && body.getLocation().distanceSquared(actor.getLocation())<=32*32;
+    }
+    public JsonObject snapshot() {
+        JsonObject state=new JsonObject();boolean loaded=body!=null && body.isValid() && !body.isDead();
+        state.addProperty("loaded",loaded);state.addProperty("invited",knownId!=null);
+        state.addProperty("keeps_company",keepCompany);state.addProperty("outcome",outcome);
+        long now=System.currentTimeMillis();
+        String mode=!loaded?(knownId==null?"absent":"unloaded"):plugin.isPaused()?"paused":job!=null?"building":
+            designUntil>now?"designing":listeningUntil>now?"listening":wanderUntil>now?"exploring":
+            terrainStep<terrain.size() || step<route.size()?"walking":keepCompany?"keeping_company":"staying";
+        state.addProperty("mode",mode);
+        state.addProperty("plan_remaining_seconds",Math.max(0,(Math.max(wanderUntil,designUntil)-now)/1000));
+        if(loaded) {
+            Location p=body.getLocation();state.addProperty("world",body.getWorld().getName());
+            state.addProperty("x",p.getX());state.addProperty("y",p.getY());state.addProperty("z",p.getZ());
+            state.addProperty("yaw",p.getYaw());state.addProperty("pitch",p.getPitch());state.addProperty("jumping",jumping);
+            if(terrainStep<terrain.size()) {
+                var goal=terrain.getLast();JsonObject destination=new JsonObject();
+                destination.addProperty("x",goal.x());destination.addProperty("y",goal.y());destination.addProperty("z",goal.z());
+                state.add("walking_destination",destination);
+            }
+            if(job!=null){state.addProperty("placed_blocks",job.placed);state.addProperty("planned_blocks",job.operations.size());}
+        }
+        return state;
     }
     static int burstDuration(JsonObject input) {
         int seconds=input.has("duration_seconds")?BuildSpec.integer(input,"duration_seconds"):30;
@@ -370,7 +419,7 @@ public final class Companion {
     public void gesture(Turn turn) {
         try {
             Player actor=plugin.authorizedActor(turn);
-            if(body==null || !body.isValid() || job!=null || step<route.size()
+            if(body==null || !body.isValid() || job!=null || step<route.size() || terrainStep<terrain.size()
                 || !body.getWorld().equals(actor.getWorld()) || body.getLocation().distanceSquared(actor.getLocation())>32*32)return;
             Location p=body.getLocation();
             if(!body.getWorld().isChunkLoaded(p.getBlockX()>>4,p.getBlockZ()>>4))return;

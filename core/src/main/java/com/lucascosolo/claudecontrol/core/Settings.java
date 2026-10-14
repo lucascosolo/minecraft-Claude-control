@@ -5,7 +5,7 @@ import java.util.*;
 /** Immutable settings; diagnostics deliberately never include configuration values. */
 public final class Settings {
     private final String apiKey, model, effort, chatPrefix;
-    private final int maxTokens, maxToolIterations, maxTurnsPerMinute, maxQueuedTriggers, historyTurns, eventIntervalMinutes;
+    private final int maxTokens, maxToolIterations, maxTurnsPerMinute, maxQueuedTriggers, historyTurns, eventIntervalMinutes, initiativeIntervalSeconds;
     private final boolean eventsEnabled;
     private final Set<String> owners, deniedCommands;
     private Settings(Map<String,Object> c, Map<String,String> environment) {
@@ -23,6 +23,7 @@ public final class Settings {
         maxQueuedTriggers = number(c,"max-queued-triggers",32,1,128);
         historyTurns = number(c,"history-turns",16,1,32);
         eventIntervalMinutes = number(c,"event-interval-minutes",30,1,1440);
+        initiativeIntervalSeconds = number(c,"initiative-interval-seconds",1800,60,3600);
         chatPrefix = string(c,"chat-prefix","<Claude>");
         if (chatPrefix.length()>80 || chatPrefix.chars().anyMatch(Character::isISOControl)) throw invalid("chat-prefix");
         Object enabled=c.getOrDefault("events-enabled",false);
@@ -43,6 +44,7 @@ public final class Settings {
     public boolean isOwner(UUID id,String name,boolean operator) { return operator || owners.contains(id.toString().toLowerCase(Locale.ROOT)) || owners.contains(name.toLowerCase(Locale.ROOT)); }
     public String apiKey(){return apiKey;} public String model(){return model;} public String effort(){return effort;} public String chatPrefix(){return chatPrefix;}
     public int maxTokens(){return maxTokens;} public int maxToolIterations(){return maxToolIterations;} public int maxTurnsPerMinute(){return maxTurnsPerMinute;} public int maxQueuedTriggers(){return maxQueuedTriggers;} public int historyTurns(){return historyTurns;} public int eventIntervalMinutes(){return eventIntervalMinutes;}
+    public int initiativeIntervalSeconds(){return initiativeIntervalSeconds;}
     public boolean eventsEnabled(){return eventsEnabled;} public Set<String> deniedCommands(){return deniedCommands;}
     @Override public String toString(){return "Settings[backend=api, credentials="+(apiKey.isBlank()?"absent":"configured")+"]";}
 }

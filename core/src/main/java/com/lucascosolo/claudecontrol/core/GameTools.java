@@ -135,7 +135,7 @@ public final class GameTools implements ToolExecutor {
                 else speakOpenly(formatted);
                 yield ok("Message delivered");
             }
-            case "observe_world" -> ok(snapshot(actor));
+            case "observe_world" -> ok(snapshot(actor,plugin.companion()));
             case "survey_area" -> survey(a,actor);
             case "build" -> {ToolReply result=build(a,actor,owner);if(!result.error())plugin.companion().gesture(turn);yield result;}
             case "companion" -> plugin.companion().action(a,turn);
@@ -199,6 +199,10 @@ public final class GameTools implements ToolExecutor {
     }
     static void speakOpenly(String message) {
         Bukkit.broadcastMessage(message);
+    }
+    public static String snapshot(Player actor,Companion companion) {
+        JsonObject report=JsonParser.parseString(snapshot(actor)).getAsJsonObject();
+        report.add("claude_body",companion.snapshot());return report.toString();
     }
     public static String snapshot(Player actor) {
         if(!Bukkit.isPrimaryThread())throw new IllegalStateException("World snapshots require the server thread");

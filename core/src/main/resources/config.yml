@@ -18,3 +18,7 @@ denied-commands: []
 # Automatic events incur API usage. Keep off until the owner enables them.
 events-enabled: false
 event-interval-minutes: 30
+
+# Approved planning base interval: jitter adds up to 50%, capped at one hour.
+# Owner commands persist on/off separately; missing invitation uses approved 30–45 minutes.
+initiative-interval-seconds: 1800
