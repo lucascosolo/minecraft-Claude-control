@@ -76,6 +76,9 @@ public final class GameTools implements ToolExecutor {
         definitions.add(JsonParser.parseString("""
           {"name":"landscape","description":"Owner-only explicit natural-terrain grading after survey_blocks. Every absolute-coordinate edit supplies expected_material from its server survey receipt and desired natural earth material or AIR. Maximum512 edits; all target cells, exact stale checks, protected tile/container neighbors, artificial surroundings, living entities, fluids and gravity hazards are checked before any changes. No drops or physics. Never edits structures, inventories or block entities. It cannot reliably distinguish player-placed natural earth/stone from terrain; review exact cells first. Stored project steps do not authorize landscaping.","input_schema":{"type":"object","properties":{"world":{"type":"string"},"survey_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":512,"items":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"},"expected_material":{"type":"string"},"material":{"type":"string"}},"required":["x","y","z","expected_material","material"]}}},"required":["world","survey_id","operations"]}}
           """).getAsJsonObject());
+        definitions.add(JsonParser.parseString("""
+          {"name":"entity_commands","description":"Owner-authorized broad vanilla entity control: summon any non-destructive entity including ordinary hostile mobs, inspect/edit entity NBT, attributes, riding, tags, teleports, effects, entity equipment and presentation. Commands execute as the authenticated actor at their location. Accepts selectors and benign NBT; not a passive-animal allowlist. Up to4 commands,4096 characters each; entire batch validated before dispatch. Vanilla entity roots and up to4 execute wrappers only. No kill/damage, destructive explosive/boss/weather entities, death/explosive or callback/identity/inventory NBT, block edits, host, plugin or server administration. Dispatch acceptance is not proof of completed effects; inspect results and do not blindly replay partial work. Events and autonomous initiative cannot use this tool.","input_schema":{"type":"object","properties":{"commands":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"string","maxLength":4096}}},"required":["commands"]}}
+          """).getAsJsonObject());
         return definitions;
     }
     @Override public ToolReply execute(String name, JsonObject args, Turn turn) throws Exception {
@@ -231,6 +234,7 @@ public final class GameTools implements ToolExecutor {
                     +(refused.isEmpty()?"":". Server did not confirm the full requested state in "+refused+"; some partial changes may remain")
                     +". No chunks were loaded.",!refused.isEmpty());
             }
+            case "entity_commands" -> entityCommands(a,turn,owner);
             case "run_commands" -> {
                 if (!owner) yield error("Console commands require an owner");
                 JsonArray batch=a.getAsJsonArray("commands");
@@ -243,6 +247,30 @@ public final class GameTools implements ToolExecutor {
             }
             default -> error("Unknown tool");
         };
+    }
+    private ToolReply entityCommands(JsonObject args,Turn turn,boolean owner){
+        if(!owner || turn.event())return error("ENTITY_COMMAND_OWNER_REQUIRED: Current owner authorization from an authenticated player request is required.");
+        List<String> normalized=new ArrayList<>();
+        try {
+            ExperienceSpec.keys(args,Set.of("commands"));JsonArray batch=ExperienceSpec.array(args,"commands");
+            if(batch.isEmpty() || batch.size()>4)return error("ENTITY_COMMAND_BATCH_LIMIT: Provide one to four commands; none dispatched.");
+            for(JsonElement command:batch){if(!command.isJsonPrimitive() || !command.getAsJsonPrimitive().isString())return error("ENTITY_COMMAND_FORMAT_REFUSED: Every command must be a string; none dispatched.");normalized.add(EntityCommandPolicy.require(command.getAsString(),plugin.settings().deniedCommands()));}
+        }catch(IllegalArgumentException invalid){return error("ENTITY_COMMAND_POLICY_REFUSED: A command or payload is outside the permitted vanilla entity boundary; none dispatched. Avoid destructive entities, death/explosive/callback/identity/inventory NBT, block targets, plugin namespaces and administration.");}
+        JsonArray receipts=new JsonArray();boolean refused=false;
+        for(int index=0;index<normalized.size();index++){
+            JsonObject receipt=new JsonObject();receipt.addProperty("index",index);
+            Player actor;
+            try{if(plugin.isPaused() || !plugin.currentOwner(turn))throw new IllegalStateException("Authorization changed");actor=plugin.authorizedActor(turn);}
+            catch(Exception authorizationChanged){receipt.addProperty("dispatch","authorization_changed");receipts.add(receipt);refused=true;break;}
+            try {
+                String command=EntityCommandPolicy.require(normalized.get(index),plugin.settings().deniedCommands());
+                boolean accepted=Bukkit.dispatchCommand(Bukkit.getConsoleSender(),"minecraft:execute as "+actor.getUniqueId()+" at @s run "+command);
+                receipt.addProperty("dispatch_accepted",accepted);receipt.addProperty("completion","unverified");receipts.add(receipt);
+                if(!accepted){refused=true;break;}
+            }catch(Exception dispatchFailure){receipt.addProperty("dispatch","failed_or_refused");receipt.addProperty("completion","unverified; partial effects may remain");receipts.add(receipt);refused=true;break;}
+        }
+        JsonObject result=new JsonObject();result.add("receipts",receipts);result.addProperty("requested",normalized.size());result.addProperty("actor_anchored",true);result.addProperty("note","Dispatch results only. Inspect actual entities before declaring success or replaying any command. Earlier accepted dispatches may have partial effects; remaining commands stop on refusal.");
+        return new ToolReply(result.toString(),refused);
     }
     static void speakOpenly(String message) {
         Bukkit.broadcastMessage(message);

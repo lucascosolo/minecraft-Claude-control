@@ -349,6 +349,10 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
         }
     }
     private void projectCommand(CommandSender sender,String[] args){
+        if((sender instanceof ConsoleCommandSender || sender instanceof RemoteConsoleCommandSender)
+            && (args.length<2 || Set.of("list","status").contains(args[1].toLowerCase(Locale.ROOT)))) {
+            sender.sendMessage(projects.summary());return;
+        }
         if(!(sender instanceof Player player) || !player.hasPermission("claudecontrol.ask")){sender.sendMessage("Use project commands from an authenticated permitted player account.");return;}
         String action=args.length>1?args[1].toLowerCase(Locale.ROOT):"list";
         if(action.equals("status"))action="list";
