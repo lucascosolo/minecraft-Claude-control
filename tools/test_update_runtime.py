@@ -99,6 +99,35 @@ class RuntimeUpdateTest(unittest.TestCase):
                          call.command("claude runtime-reload"), call.command("claude runtime-status")])
         self.wait.assert_called_once_with(0.5)
 
+    def test_actual_rcon_line_endings_confirm_success_without_polling_to_timeout(self):
+        for ending in ("\n", "\r\n"):
+            with self.subTest(ending=repr(ending)):
+                self.controller.reset_mock()
+                self.wait.reset_mock()
+                self.controller.command.side_effect = [self.before + ending, "Runtime: pending" + ending,
+                                                       "Runtime: reloaded; sha256 " + self.digest + ending]
+                confirmed = self.helper.install_runtime(self.root, self.controller, wait=self.wait, attempts=1)
+                self.assertEqual(confirmed, self.digest)
+                self.assertEqual(self.controller.command.call_args_list,
+                                 [call("claude runtime-status"), call("claude runtime-reload"), call("claude runtime-status")])
+                self.wait.assert_called_once_with(0.5)
+                self.assert_private_files_preserved()
+
+    def test_rcon_line_endings_preserve_refusal_and_rollback_recognition(self):
+        for ending in ("\n", "\r\n"):
+            for outcome in ("refused", "rolled back", "halted"):
+                with self.subTest(ending=repr(ending), outcome=outcome):
+                    self.controller.reset_mock()
+                    self.wait.reset_mock()
+                    self.controller.command.side_effect = [self.before + ending, "queued" + ending,
+                                                           "Runtime: " + outcome + "; review actual state" + ending]
+                    with self.assertRaisesRegex(RuntimeError, "refused or rolled back"):
+                        self.helper.install_runtime(self.root, self.controller, wait=self.wait, attempts=1)
+                    self.assertEqual(self.controller.command.call_count, 3)
+                    self.wait.assert_called_once_with(0.5)
+                    self.assertIn(self.old, self.archived())
+                    self.assert_private_files_preserved()
+
     def test_stable_class_changes_additions_and_removals_refuse_before_rcon_or_copy(self):
         variants = []
         for name in ("ClaudeControlPlugin.class", "ClaudeControlPlugin$Helper.class", "bootstrap/RuntimeArchive.class"):

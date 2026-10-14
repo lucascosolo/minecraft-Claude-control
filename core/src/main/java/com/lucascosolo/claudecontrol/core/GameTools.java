@@ -463,8 +463,7 @@ public final class GameTools implements ToolExecutor {
             throw new WorldRefusal("WORLD_BOUNDS_UNAVAILABLE","Location "+x+","+y+","+z+" is outside the border/build height or its chunk is not loaded; no chunk was loaded");
     }
     static boolean safeLanding(Material material) {
-        return BuildSpec.safeMaterial(material.name()) && !Set.of("WITHER_ROSE","HONEY_BLOCK","SLIME_BLOCK",
-            "POINTED_DRIPSTONE","DRIPSTONE_BLOCK","ICE","PACKED_ICE","BLUE_ICE","FROSTED_ICE").contains(material.name());
+        return CompanionLanding.safeGround(material.name());
     }
     private static String string(JsonObject a,String key) {
         if(!a.has(key) || !a.get(key).isJsonPrimitive() || !a.get(key).getAsJsonPrimitive().isString())

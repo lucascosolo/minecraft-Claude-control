@@ -273,9 +273,13 @@ public final class Companion {
     }
     private Location findSummon(Player actor) {
         Location p=actor.getLocation();World w=actor.getWorld();int y=p.getBlockY();
-        for(int[] delta:new int[][]{{2,0},{-2,0},{0,2},{0,-2},{3,0},{0,3}}) {
-            int x=p.getBlockX()+delta[0],z=p.getBlockZ()+delta[1];
-            if(safeCell(w,x,y,z))return new Location(w,x+0.5,y,z+0.5,p.getYaw(),0);
+        for(var candidate:CompanionLanding.candidates(p.getBlockX(),y,p.getBlockZ())) {
+            int x=candidate.x(),cy=candidate.y(),z=candidate.z();
+            if(!safeCell(w,x,cy,z))continue;
+            boolean occupied=false;
+            for(Entity entity:w.getNearbyEntities(new org.bukkit.util.BoundingBox(x+0.15,cy,z+0.15,x+0.85,cy+1.9,z+0.85)))
+                if(entity instanceof LivingEntity && (knownId==null || !knownId.equals(entity.getUniqueId()))){occupied=true;break;}
+            if(!occupied)return new Location(w,x+0.5,cy,z+0.5,p.getYaw(),0);
         }return null;
     }
     private boolean plan(int x,int z) {
@@ -582,7 +586,7 @@ public final class Companion {
     }
     public String status() {
         if(body==null || !body.isValid())return knownId==null?"Claude has not been summoned":"Claude's persistent body is unloaded";
-        Location p=body.getLocation();return outcome+" in "+body.getWorld().getName()+" at "+p.getBlockX()+","+p.getBlockY()+","+p.getBlockZ()+"; physically placed blocks are checked individually";
+        Location p=body.getLocation();return outcome+" in "+body.getWorld().getName()+" at "+p.getBlockX()+","+p.getBlockY()+","+p.getBlockZ();
     }
     private static boolean safeCell(World w,int x,int y,int z) {
         try {

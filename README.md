@@ -155,8 +155,8 @@ handling and caching. Panel and startup tests use scratch data and fake
 Docker/RCON. Docker boot, real Java/Bedrock clients and a paid Claude turn still
 need validation on your desktop.
 
-Current verification: 169 core tests, 17 panel tests, 25 startup-helper tests,
-18 upgrade-helper tests and 12 runtime-update tests passed. The shaded plugin and its script worker were
+Current verification: 174 core tests, 17 panel tests, 25 startup-helper tests,
+18 upgrade-helper tests and 14 runtime-update tests passed. The shaded plugin and its script worker were
 built and checked. This does not replace
 the first live desktop session. Historical shell tests remain excluded.
 

@@ -61,7 +61,7 @@ def install_runtime(root, controller, source=None, *, wait=time.sleep, attempts=
     old_data = upgrade.read_regular(installed)
     if validate(next_data) != validate(old_data):  # SAFETY-GUARD
         raise ValueError("Bootstrap changed: apply this update with the stopped-server updater")
-    before = controller.command("claude runtime-status")
+    before = controller.command("claude runtime-status").strip()
     if not before.startswith("Runtime: ") or "; sha256 none" in before:  # SAFETY-GUARD
         raise RuntimeError("A running compatible ClaudeControl bootstrap is required")
     upgrade.write_preserving(root, "run/server/plugins/ClaudeControl.jar", next_data)
@@ -69,7 +69,7 @@ def install_runtime(root, controller, source=None, *, wait=time.sleep, attempts=
     expected = hashlib.sha256(next_data).hexdigest()
     for _ in range(attempts):
         wait(0.5)
-        status = controller.command("claude runtime-status")
+        status = controller.command("claude runtime-status").strip()
         if status.startswith("Runtime: reloaded;") and status.endswith(expected):
             return expected
         if status.startswith(("Runtime: refused;", "Runtime: rolled back;", "Runtime: halted;")):
