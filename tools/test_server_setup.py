@@ -53,6 +53,22 @@ class ServerSetupTest(unittest.TestCase):
     def files(self):
         return [path for path in self.root.rglob("*") if path.is_file() and not path.is_symlink()]
 
+    def test_repeat_configuration_preserves_saved_key_without_prompting(self):
+        template = self.root / "core/src/main/resources/config.yml"
+        template.parent.mkdir(parents=True)
+        template.write_text('api-key: ""\nowners: []\n')
+        accounts = [{"platform": "java", "name": "FixtureOwner"}]
+        with patch.object(self.helpers, "PROJECT", self.root), \
+             patch("getpass.getpass", return_value="private-fixture-key"), \
+             patch.object(self.helpers, "yes", return_value=True):
+            self.helpers.configure(accounts)
+        before = {path.relative_to(self.root): path.read_bytes() for path in self.files()}
+        with patch.object(self.helpers, "PROJECT", self.root), \
+             patch("getpass.getpass", side_effect=AssertionError("Saved key must be reused")), \
+             patch("builtins.input", side_effect=AssertionError("Repeat setup must not prompt")):
+            self.helpers.configure(accounts)
+        self.assertEqual(before, {path.relative_to(self.root): path.read_bytes() for path in self.files()})
+
     def test_confined_accepts_only_relative_paths_below_real_root(self):
         path = self.helpers.confined(self.root, "run/server/config.yml")
         self.assertEqual(path, self.root / "run" / "server" / "config.yml")

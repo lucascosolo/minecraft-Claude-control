@@ -137,7 +137,7 @@ def player_accounts():
 def configure(accounts):
     config = confined(PROJECT, "run/server/plugins/ClaudeControl/config.yml")
     fresh = not config.exists()
-    if fresh or yes("Update the existing private Claude API key?"):
+    if fresh:
         key = getpass.getpass("Anthropic API key (hidden; blank leaves Claude inactive): ").strip()
         if not key and not yes("Continue with Claude inactive until you add a key?"):
             raise RuntimeError("Setup stopped before server launch")
