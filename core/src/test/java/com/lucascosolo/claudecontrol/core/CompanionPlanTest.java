@@ -9,6 +9,27 @@ import java.util.function.Predicate;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CompanionPlanTest {
+    @Test void companionshipReplansWhenPlayerMovesAndAvoidsTheirOccupiedCell() {
+        var start=new CompanionPlan.Cell(0,0);
+        var first=new CompanionPlan.Cell(8,0);
+        var second=new CompanionPlan.Cell(8,6);
+        var original=CompanionPlan.companyRoute(start,first,c->true);
+        assertFalse(original.isEmpty());
+        assertFalse(original.contains(first));
+        var moved=CompanionPlan.companyRoute(original.get(1),second,c->true);
+        assertFalse(moved.isEmpty());
+        assertFalse(moved.contains(second));
+        var destination=moved.getLast();
+        assertEquals(2,Math.abs(destination.x()-second.x())+Math.abs(destination.z()-second.z()));
+        assertNotEquals(original.getLast(),destination);
+    }
+
+    @Test void companionshipRetriesAfterBlockedTerrainBecomesWalkable() {
+        var start=new CompanionPlan.Cell(0,0);var player=new CompanionPlan.Cell(8,0);
+        assertTrue(CompanionPlan.companyRoute(start,player,c->c.equals(start)).isEmpty());
+        assertFalse(CompanionPlan.companyRoute(start,player,c->true).isEmpty());
+    }
+
     private CompanionPlan.Cell cell(int x, int z) { return new CompanionPlan.Cell(x, z); }
 
     private void assertSafePath(CompanionPlan.Cell start, CompanionPlan.Cell goal,

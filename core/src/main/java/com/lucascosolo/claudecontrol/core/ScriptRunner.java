@@ -16,6 +16,7 @@ public final class ScriptRunner implements AutoCloseable {
     private final ReentrantLock lock=new ReentrantLock();
     private final ExecutorService io=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"experience-script-io");t.setDaemon(true);return t;});
     private volatile Process child;
+    private volatile Process retiringChild;
     private volatile boolean closed;
     private BufferedWriter input;
     private Reader output;
@@ -80,10 +81,11 @@ public final class ScriptRunner implements AutoCloseable {
     private synchronized void stop() {
         Process p=child;child=null;
         if(p!=null) {
-            p.destroyForcibly();
+            retiringChild=p;p.destroyForcibly();
             try {p.waitFor(1,TimeUnit.SECONDS);}catch(InterruptedException ex){Thread.currentThread().interrupt();}
         }
     }
+    public boolean awaitStopped(long timeoutMillis) throws InterruptedException {return io.awaitTermination(timeoutMillis,TimeUnit.MILLISECONDS) && (child==null || !child.isAlive()) && (retiringChild==null || !retiringChild.isAlive());}
     @Override public void close() {closed=true;stop();io.shutdownNow();}
 
     static void validateActions(JsonArray actions) {

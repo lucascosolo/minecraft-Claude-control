@@ -36,19 +36,35 @@ ambitious towns, transport, adventures and ongoing stories, built in practical
 stages with you.
 
 Claude has a visible character without requiring another Minecraft account.
-Use `/claude companion summon` on clear level ground, then
-`/claude companion follow`, `wave`, `stay`, `dismiss` or `status`. These direct controls
+Use `/claude companion summon` on clear level ground; Claude then keeps nearby
+players company automatically. Use `wave`, `stay`, `dismiss` or `status`;
+`/claude companion follow` resumes companionship after `stay`. These direct controls
 make no API calls. Through conversation, Claude can perform small physical
 building jobs, or gesture while conjuring larger structures and changing time
 or weather. It is kind, playful and powerful, and seeks fun things you can do
 together without imposing a role or title on itself.
 
-Physical walking currently requires safe loaded ground on one level; stairs
-and jumping are not implemented. Physical jobs place up to 16 blocks in sequence
+Claude walks and jumps up or down single-block changes on checked loaded terrain.
+Its local behavior looks toward friends and chooses occasional short nearby walks.
+Through conversation it can choose a 10–60 second wandering or movement plan,
+which runs without additional API calls and yields to new requests and jobs.
+When terrain blocks
+companionship, Claude can catch up beside a nearby permitted player on verified
+clear loaded ground, with a small particle effect. Physical jobs place up to 16 blocks in sequence
 and report partial work honestly. Larger builds use the instant bounded build
 tool. Owner-authorized world effects can reach all server worlds; remote building
 uses loaded chunks and protects existing structures. Both client renderings and
 physical animations still need a live check.
+
+The initial runtime-loader update uses `python3 tools/start_26_3.py` and requires
+one server restart. Thereafter, build the plugin and run
+`python3 tools/update_runtime.py` to install compatible Java runtime updates while
+Minecraft and player sessions keep running. It archives replaced bytes, validates
+the stable loader, stops old listeners and workers, and verifies the active jar.
+`/claude runtime-status` reports the outcome; `/claude runtime-reload` is owner-only.
+Loader, permissions, or dependency changes still require a server restart.
+Settings and managed addons continue to use `/claude reload` and
+`/claude addons reload` respectively. Live runtime switching still needs a server check.
 
 ## Managed interactive experiences
 
@@ -110,8 +126,8 @@ handling and caching. Panel and startup tests use scratch data and fake
 Docker/RCON. Docker boot, real Java/Bedrock clients and a paid Claude turn still
 need validation on your desktop.
 
-Current verification: 74 core tests, 17 panel tests, 21 startup-helper tests and
-15 upgrade-helper tests passed. The shaded plugin and its script worker were
+Current verification: 102 core tests, 17 panel tests, 22 startup-helper tests,
+15 upgrade-helper tests and 12 runtime-update tests passed. The shaded plugin and its script worker were
 built and checked. This does not replace
 the first live desktop session. Historical shell tests remain excluded.
 

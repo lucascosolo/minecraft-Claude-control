@@ -14,7 +14,7 @@ import java.util.concurrent.CompletableFuture;
 
 /** One persistent visible companion; all live methods run on the server thread. */
 public final class Companion {
-    private final ClaudeControlPlugin plugin;
+    private final ClaudeRuntime plugin;
     private final NamespacedKey tag;
     private final MemoryStore registry;
     private final Object identityLock=new Object();
@@ -23,6 +23,15 @@ public final class Companion {
     private BukkitTask timer;
     private Turn controller;
     private boolean following;
+    private boolean keepCompany=true;
+    private int presenceTicks;
+    private List<CompanionPlan.WalkCell> terrain=List.of();
+    private int terrainStep;
+    private boolean jumping;
+    private long wanderUntil;
+    private long listeningUntil;
+    private long designUntil;
+    private Location jumpStart;
     private List<CompanionPlan.Cell> route=List.of();
     private int step,level,ticks,stalled;
     private long deadline;
@@ -35,12 +44,12 @@ public final class Companion {
         int placed,index;final List<BuildSpec.BlockPlacement> operations;
         BuildJob(BuildSpec spec,Map<BuildSpec.BlockPlacement,Material> materials){this.spec=spec;this.materials=materials;operations=List.copyOf(materials.keySet());}
     }
-    public Companion(ClaudeControlPlugin plugin) throws Exception {
-        this.plugin=plugin;tag=new NamespacedKey(plugin,"claude_companion");
+    public Companion(ClaudeRuntime plugin) throws Exception {
+        this.plugin=plugin;tag=new NamespacedKey(plugin.host(),"claude_companion");
         registry=new MemoryStore(plugin.getDataFolder().toPath().resolve("companion"));
         String saved=registry.read("body-uuid.txt").trim();if(!saved.isEmpty())knownId=UUID.fromString(saved);
         adopt();
-        timer=Bukkit.getScheduler().runTaskTimer(plugin,this::tick,1,1);
+        timer=Bukkit.getScheduler().runTaskTimer(plugin.host(),this::tick,1,1);
     }
     public void persistIdentity() throws Exception {
         synchronized(identityLock) {
@@ -82,7 +91,7 @@ public final class Companion {
             if(spot==null)return new ToolReply("No safe, clear, loaded standing spot beside the player",true);
             body=actor.getWorld().spawn(spot,Mannequin.class,entity->{
                 entity.getPersistentDataContainer().set(tag,PersistentDataType.BYTE,(byte)1);configure(entity);
-            });knownId=body.getUniqueId();outcome="Summoned";
+            });knownId=body.getUniqueId();keepCompany=true;outcome="Summoned; keeping you company";
             return new ToolReply("Claude appeared beside you. "+status(),false);
         }
         if(body==null || !body.isValid())return new ToolReply("Claude's body is not loaded; summon first or visit its existing area",true);
@@ -98,14 +107,24 @@ public final class Companion {
                 }
                 return new ToolReply("Claude's body was dismissed. Memory and builds are preserved; summon again whenever you like",false);
             }
-            case "stay" -> {finishJob("Stopped by request",true);halt("Staying here");}
-            case "wave" -> {look(actor.getEyeLocation());body.swingMainHand();outcome="Waved";}
-            case "follow" -> {halt("Following nearby actor");controller=turn;following=true;deadline=Long.MAX_VALUE;}
+            case "stay" -> {keepCompany=false;finishJob("Stopped by request",true);halt("Staying here");}
+            case "wave" -> {halt("Giving you my attention");listeningUntil=System.currentTimeMillis()+3000;look(actor.getEyeLocation());body.swingMainHand();outcome="Waved";}
+            case "follow" -> {listeningUntil=0;keepCompany=true;halt("Keeping you company");controller=turn;following=true;deadline=Long.MAX_VALUE;}
+            case "wander" -> {
+                int duration=burstDuration(input);
+                listeningUntil=0;halt("Exploring nearby for "+duration+" seconds");keepCompany=true;
+                controller=turn;following=true;deadline=Long.MAX_VALUE;wanderUntil=System.currentTimeMillis()+duration*1000L;
+            }
+            case "design" -> {
+                int duration=burstDuration(input);
+                halt("Designing experiences; focused for "+duration+" seconds");
+                designUntil=System.currentTimeMillis()+duration*1000L;look(actor.getEyeLocation());
+            }
             case "move" -> {
                 int x=BuildSpec.integer(input,"x"),y=BuildSpec.integer(input,"y"),z=BuildSpec.integer(input,"z");
-                if(y!=body.getLocation().getBlockY())return new ToolReply("Claude currently walks on one level; no stairs or jumping",true);
-                halt("Planning walk");controller=turn;deadline=System.currentTimeMillis()+60_000;
-                if(!plan(x,z))return new ToolReply("No bounded safe loaded route; Claude stayed put",true);outcome="Walking";
+                int duration=burstDuration(input);
+                listeningUntil=0;halt("Planning walk");controller=turn;deadline=System.currentTimeMillis()+duration*1000L;
+                if(!planTerrain(x,y,z))return new ToolReply("No bounded safe loaded route; Claude stayed put",true);outcome="Walking and jumping where safe";
             }
             default -> {return new ToolReply("Unknown companion action",true);}
         }
@@ -154,30 +173,119 @@ public final class Companion {
         return !route.isEmpty();
     }
     private void tick() {
-        if(controller==null)return;
+        if(plugin.isPaused())return;
         try {
+            if(++presenceTicks%20==0 && job==null && (controller==null || following))keepNearby();
+            if(controller==null)return;
             Player actor=plugin.authorizedActor(controller);
             if(plugin.isPaused() || body==null || !body.isValid() || body.isDead()
                 || !body.getWorld().equals(actor.getWorld()) || body.getLocation().distanceSquared(actor.getLocation())>32*32
                 || System.currentTimeMillis()>deadline)throw new IllegalStateException("Actor, body or time limit unavailable");
             Location here=body.getLocation();
-            if(!safeCell(body.getWorld(),here.getBlockX(),here.getBlockY(),here.getBlockZ()))throw new IllegalStateException("Unsafe or unloaded standing cell");
+            if(!jumping && !safeCell(body.getWorld(),here.getBlockX(),here.getBlockY(),here.getBlockZ()))throw new IllegalStateException("Unsafe or unloaded standing cell");
+            if(terrainStep<terrain.size()){walkTerrainStep();return;}
             if(step<route.size()){walkStep();return;}
             body.setVelocity(new Vector());body.setImmovable(true);
             if(job!=null){buildStep();return;}
-            if(following) {
-                if(++ticks%20!=0)return;
-                Location target=actor.getLocation();
-                if(target.getBlockY()!=here.getBlockY())throw new IllegalStateException("Follow target left this walking level");
-                if(here.distanceSquared(target)<=9)return;
-                // Stand beside the player, avoiding occupation of the player's exact cell.
-                boolean planned=false;
-                for(int[] d:new int[][]{{1,0},{-1,0},{0,1},{0,-1}})
-                    if(plan(target.getBlockX()+d[0],target.getBlockZ()+d[1])){planned=true;break;}
-                if(!planned)throw new IllegalStateException("Follow route blocked or beyond bounded range");
-            } else halt("Walk completed");
+            if(!following)halt("Walk completed");
         } catch(Exception e) {finishJob("Stopped: actor permission, safe route, body or time limit changed",true);halt("Stopped safely; request a new route");}
     }
+    /** Local companionship, independent of paid conversations. Never loads chunks or changes a player's position. */
+    private void keepNearby() {
+        if(!keepCompany || System.currentTimeMillis()<Math.max(listeningUntil,designUntil))return;
+        adopt();
+        if(body==null || !body.isValid() || body.isDead())return;
+        Location here=body.getLocation();Player nearest=null;double distance=32*32;
+        for(Player candidate:body.getWorld().getPlayers()) {
+            if(!candidate.isOnline() || !candidate.hasPermission("claudecontrol.ask") || candidate.getGameMode()==GameMode.SPECTATOR)continue;
+            double next=here.distanceSquared(candidate.getLocation());
+            if(next<distance){nearest=candidate;distance=next;}
+        }
+        if(nearest==null){halt("Waiting for nearby friends");return;}
+        Turn nearby=new Turn(nearest.getUniqueId(),nearest.getName(),false,"Keeping nearby players company",false);
+        plugin.authorizedActor(nearby);
+        controller=nearby;following=true;deadline=Long.MAX_VALUE;
+        if(jumping)return;
+        long now=System.currentTimeMillis();
+        if(wanderUntil>now) {
+            if(terrainStep<terrain.size())return;
+            if(presenceTicks%40!=0)return;
+            var random=java.util.concurrent.ThreadLocalRandom.current();Location anchor=nearest.getLocation();
+            for(int attempt=0;attempt<4;attempt++) {
+                int x=anchor.getBlockX()+random.nextInt(-6,7),z=anchor.getBlockZ()+random.nextInt(-6,7);
+                for(int dy:new int[]{0,1,-1,2,-2}) {
+                    int y=anchor.getBlockY()+dy;
+                    if(safeCell(body.getWorld(),x,y,z) && planTerrain(x,y,z)) {outcome="Exploring nearby; local plan active";return;}
+                }
+            }
+            look(nearest.getEyeLocation());return;
+        }
+        wanderUntil=0;
+        if(distance<=9) {
+            route=List.of();step=0;terrain=List.of();terrainStep=0;body.setVelocity(new Vector());body.setImmovable(true);
+            if(presenceTicks%200==0){wanderUntil=now+10_000;return;}
+            look(nearest.getEyeLocation());outcome="Keeping you company";return;
+        }
+        Location target=nearest.getLocation();
+        for(int[] delta:new int[][]{{2,0},{-2,0},{0,2},{0,-2}})
+            for(int dy:new int[]{0,1,-1})
+                if(planTerrain(target.getBlockX()+delta[0],target.getBlockY()+dy,target.getBlockZ()+delta[1])) {outcome="Walking with you";return;}
+        // Terrain can prevent the bounded same-level walk. Only the existing body may catch up,
+        // beside an authorized nearby actor on verified clear loaded ground inside the world border.
+        Location spot=findSummon(nearest);
+        route=List.of();step=0;terrain=List.of();terrainStep=0;body.setVelocity(new Vector());body.setImmovable(true);
+        if(spot==null){outcome="Waiting for safe ground near you";return;}
+        if(body.teleport(spot)) {
+            body.getWorld().spawnParticle(Particle.END_ROD,spot.clone().add(0,1,0),8,0.2,0.4,0.2,0.01);
+            look(nearest.getEyeLocation());outcome="Caught up beside you";
+        }
+    }
+    static int burstDuration(JsonObject input) {
+        int seconds=input.has("duration_seconds")?BuildSpec.integer(input,"duration_seconds"):30;
+        if(seconds<10 || seconds>60)throw new IllegalArgumentException("Local plans require 10 to 60 seconds");
+        return seconds;
+    }
+    private boolean planTerrain(int x,int y,int z) {
+        Location here=body.getLocation();World world=body.getWorld();
+        var start=new CompanionPlan.WalkCell(here.getBlockX(),here.getBlockY(),here.getBlockZ());
+        var goal=new CompanionPlan.WalkCell(x,y,z);
+        terrain=CompanionPlan.terrainRoute(start,goal,c->safeCell(world,c.x(),c.y(),c.z()),c->clearCell(world,c.x(),c.y(),c.z()));
+        terrainStep=0;stalled=0;lastDistance=Double.MAX_VALUE;
+        return !terrain.isEmpty();
+    }
+    private void walkTerrainStep() {
+        var target=terrain.get(terrainStep);Location here=body.getLocation();World world=body.getWorld();
+        if(!safeCell(world,target.x(),target.y(),target.z()))throw new IllegalStateException("Terrain route changed");
+        double dx=target.x()+0.5-here.getX(),dz=target.z()+0.5-here.getZ();double distance=Math.sqrt(dx*dx+dz*dz);
+        if(distance<0.12 && Math.abs(here.getY()-target.y())<0.1 && (!jumping || body.isOnGround())) {
+            terrainStep++;jumping=false;body.setGravity(false);body.setVelocity(new Vector());body.setImmovable(true);stalled=0;return;
+        }
+        if(++stalled>100)throw new IllegalStateException("Jump or walk stalled");
+        double vx=0,vz=0;
+        if(Math.abs(dx)>0.04)vx=Math.copySign(Math.min(0.12,Math.abs(dx)),dx);
+        else if(Math.abs(dz)>0.04)vz=Math.copySign(Math.min(0.12,Math.abs(dz)),dz);
+        int feet=here.getBlockY();
+        if(!clearCell(world,here.getBlockX(),feet,here.getBlockZ())
+            || !clearCell(world,here.getBlockX(),feet+1,here.getBlockZ()))throw new IllegalStateException("Jump column obstructed");
+        body.setImmovable(false);
+        if(!jumping && target.y()!=feet) {
+            if(target.y()>feet && (!clearCell(world,here.getBlockX(),feet+2,here.getBlockZ())
+                || !clearCell(world,target.x(),target.y()+2,target.z())))throw new IllegalStateException("Jump headroom changed");
+            jumpStart=here.clone();jumping=true;body.setGravity(true);body.setVelocity(new Vector(vx,target.y()>feet?0.42:0,vz));
+        } else body.setVelocity(new Vector(vx,jumping?body.getVelocity().getY():0,vz));
+        look(new Location(world,target.x()+0.5,target.y()+1.4,target.z()+0.5));
+    }
+    private static boolean clearCell(World world,int x,int y,int z) {
+        try {GameTools.checkLocation(world,x,y,z);return world.getBlockAt(x,y,z).getType().isAir();}
+        catch(IllegalArgumentException ignored){return false;}
+    }
+    public void interruptPlan(Turn incoming) {
+        listeningUntil=System.currentTimeMillis()+60_000;
+        if(job!=null && controller!=null && (controller.actorId().equals(incoming.actorId()) || plugin.currentOwner(incoming))) {
+            finishJob("Interrupted by a new request; completed placements preserved",true);halt("Listening to your request");
+        } else if(job==null && (following || wanderUntil>0 || terrainStep<terrain.size()))halt("Listening to your request");
+    }
+    public void requestFinished() {listeningUntil=0;}
     private void walkStep() {
         Location here=body.getLocation();var target=route.get(step);
         if(here.getBlockY()!=level || !safeCell(body.getWorld(),target.x(),level,target.z()))throw new IllegalStateException("Route changed");
@@ -251,8 +359,11 @@ public final class Companion {
         if(controller!=null){Player actor=Bukkit.getPlayer(controller.actorId());if(actor!=null)actor.sendMessage(plugin.settings().chatPrefix()+result);}
     }
     private void halt(String reason) {
-        following=false;controller=null;route=List.of();step=0;outcome=reason;
-        if(body!=null && body.isValid()){body.setVelocity(new Vector());body.setImmovable(true);}
+        boolean settle=jumping;
+        if(jumping && jumpStart!=null && body!=null && body.isValid()
+            && safeCell(jumpStart.getWorld(),jumpStart.getBlockX(),jumpStart.getBlockY(),jumpStart.getBlockZ()))settle=!body.teleport(jumpStart);
+        following=false;controller=null;route=List.of();step=0;terrain=List.of();terrainStep=0;wanderUntil=0;designUntil=0;outcome=reason;
+        if(body!=null && body.isValid()){body.setVelocity(new Vector());body.setImmovable(!settle);body.setGravity(settle);jumping=false;}
     }
     private void look(Location target) {body.lookAt(target.getX(),target.getY(),target.getZ(),LookAnchor.EYES);}
     /** Optional expression for powerful tools; never spawns, changes jobs or diverts a walk. */
@@ -271,7 +382,7 @@ public final class Companion {
     public void close() {stop("Plugin stopped; physical work paused");if(timer!=null){timer.cancel();timer=null;}}
     public void reload() {
         stop("Settings reloaded; physical movement stopped");if(timer!=null)timer.cancel();
-        timer=Bukkit.getScheduler().runTaskTimer(plugin,this::tick,1,1);
+        timer=Bukkit.getScheduler().runTaskTimer(plugin.host(),this::tick,1,1);
     }
     public String status() {
         if(body==null || !body.isValid())return knownId==null?"Claude has not been summoned":"Claude's persistent body is unloaded";

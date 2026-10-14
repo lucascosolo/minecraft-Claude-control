@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Managed game callbacks. No event callback invokes the provider or accepts authority from JSON. */
 public final class ExperienceManager implements Listener,AutoCloseable {
-    private final ClaudeControlPlugin plugin;
+    private final ClaudeRuntime plugin;
     private final MemoryStore store;
     private final ScriptRunner scripts=new ScriptRunner();
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(64),r->{Thread t=new Thread(r,"ClaudeControl-experiences");t.setDaemon(true);return t;},new ThreadPoolExecutor.AbortPolicy());
@@ -24,6 +24,7 @@ public final class ExperienceManager implements Listener,AutoCloseable {
     private final Set<Entry> dirtyMembership=ConcurrentHashMap.newKeySet();
     private final AtomicLong epochs=new AtomicLong();
     private volatile boolean closed;
+    private volatile boolean shutdownPersisted=true;
     private volatile String outcome="Starting";
     private BukkitTask timer;
     private int cursor;
@@ -37,11 +38,11 @@ public final class ExperienceManager implements Listener,AutoCloseable {
         JsonObject state;
         Entry(ExperienceSpec spec,JsonObject definition,JsonObject state,long generation,boolean enabled){this.spec=spec;this.definition=definition.deepCopy();this.state=state;this.generation=generation;this.enabled=enabled;}
     }
-    public ExperienceManager(ClaudeControlPlugin plugin) throws Exception {
+    public ExperienceManager(ClaudeRuntime plugin) throws Exception {
         this.plugin=plugin;store=new MemoryStore(plugin.getDataFolder().toPath().resolve("experiences"));
     }
     public void start() {
-        Bukkit.getPluginManager().registerEvents(this,plugin);
+        Bukkit.getPluginManager().registerEvents(this,plugin.host());
         offer(()->{
             try {
                 if(!store.list().contains("shared_sparks.definition.json")) {
@@ -57,7 +58,7 @@ public final class ExperienceManager implements Listener,AutoCloseable {
                 outcome="Managed experiences ready; players must join";
             }catch(Exception failure){outcome="Experience initialization refused";}
         });
-        timer=Bukkit.getScheduler().runTaskTimer(plugin,this::tick,20,20);
+        timer=Bukkit.getScheduler().runTaskTimer(plugin.host(),this::tick,20,20);
     }
     private boolean offer(Runnable task) {if(closed)return false;try{worker.execute(task);return true;}catch(RejectedExecutionException full){return false;}}
     private static String id(String id){if(id==null || !id.matches("[a-z][a-z0-9_-]{0,31}"))throw new IllegalArgumentException("Invalid experience id");return id;}
@@ -127,7 +128,7 @@ public final class ExperienceManager implements Listener,AutoCloseable {
         }catch(Exception failure){player.sendMessage("Usage: /claude addons list|status|join|leave|trigger|reload|enable|disable|reset <id>. Join first; administration requires a current owner.");}
         return true;
     }
-    private void tell(Turn turn,String text){if(!closed)Bukkit.getScheduler().runTask(plugin,()->{Player p=Bukkit.getPlayer(turn.actorId());if(p!=null)p.sendMessage(text);});}
+    private void tell(Turn turn,String text){if(!closed)Bukkit.getScheduler().runTask(plugin.host(),()->{Player p=Bukkit.getPlayer(turn.actorId());if(p!=null)p.sendMessage(text);});}
     private void membershipChanged(Entry entry){dirtyMembership.add(entry);if(offer(()->{if(!dirtyMembership.remove(entry))return;try{Entry current=active.get(entry.spec.id());if(current!=null)persist(current);}catch(Exception failure){dirtyMembership.add(entry);outcome="Membership persistence failed";}}))return;outcome="Membership save queued for retry";}
     private boolean valid(Entry entry,long generation,UUID uuid,long membership){return !closed && !plugin.isPaused() && active.get(entry.spec.id())==entry && entry.enabled && entry.generation==generation && Objects.equals(entry.participants.get(uuid),membership);}
     private void event(Player player,String type,JsonObject fields,String only) {event(player,type,fields,only,player.getLocation());}
@@ -200,12 +201,13 @@ public final class ExperienceManager implements Listener,AutoCloseable {
     private void tick(){if(closed)return;for(Entry e:dirtyMembership)if(dirtyMembership.remove(e)){if(!offer(()->{try{Entry current=active.get(e.spec.id());if(current!=null)persist(current);}catch(Exception failure){dirtyMembership.add(e);outcome="Membership persistence failed";}}))dirtyMembership.add(e);}if(plugin.isPaused())return;var players=Bukkit.getOnlinePlayers().stream().filter(p->active.values().stream().anyMatch(e->e.enabled && e.participants.containsKey(p.getUniqueId()))).toList();if(players.isEmpty())return;for(int i=0;i<Math.min(4,players.size());i++){Player p=players.get(Math.floorMod(cursor++,players.size()));event(p,"timer",new JsonObject(),null);event(p,"enter_area",new JsonObject(),null);}}
     @EventHandler(ignoreCancelled=true) public void move(PlayerMoveEvent e){Location to=e.getTo();if(to==null || (e.getFrom().getBlockX()==to.getBlockX() && e.getFrom().getBlockY()==to.getBlockY() && e.getFrom().getBlockZ()==to.getBlockZ() && e.getFrom().getWorld().equals(to.getWorld())))return;if(active.values().stream().noneMatch(entry->entry.enabled && entry.participants.containsKey(e.getPlayer().getUniqueId())))return;long now=System.currentTimeMillis();long last=movementTimes.getOrDefault(e.getPlayer().getUniqueId(),0L);if(now-last<500)return;movementTimes.put(e.getPlayer().getUniqueId(),now);event(e.getPlayer(),"enter_area",new JsonObject(),null,to);}
     @EventHandler public void quit(PlayerQuitEvent e){movementTimes.remove(e.getPlayer().getUniqueId());}
-    @EventHandler(ignoreCancelled=true) public void chat(AsyncPlayerChatEvent e){UUID uuid=e.getPlayer().getUniqueId();String message=e.getMessage();String bounded=message.substring(0,Math.min(256,message.length())).replaceAll("[\\p{Cntrl}]","");Bukkit.getScheduler().runTask(plugin,()->{Player p=Bukkit.getPlayer(uuid);if(p!=null){JsonObject fields=new JsonObject();fields.addProperty("message",bounded);event(p,"chat",fields,null);}});}
+    @EventHandler(ignoreCancelled=true) public void chat(AsyncPlayerChatEvent e){UUID uuid=e.getPlayer().getUniqueId();String message=e.getMessage();String bounded=message.substring(0,Math.min(256,message.length())).replaceAll("[\\p{Cntrl}]","");Bukkit.getScheduler().runTask(plugin.host(),()->{Player p=Bukkit.getPlayer(uuid);if(p!=null){JsonObject fields=new JsonObject();fields.addProperty("message",bounded);event(p,"chat",fields,null);}});}
     @EventHandler public void join(PlayerJoinEvent e){event(e.getPlayer(),"join",new JsonObject(),null);}
     @EventHandler(ignoreCancelled=true) public void breakBlock(BlockBreakEvent e){JsonObject fields=new JsonObject();fields.addProperty("material",e.getBlock().getType().name());event(e.getPlayer(),"block_break",fields,null);}
     @EventHandler(ignoreCancelled=true) public void place(BlockPlaceEvent e){JsonObject fields=new JsonObject();fields.addProperty("material",e.getBlock().getType().name());event(e.getPlayer(),"block_place",fields,null);}
     @EventHandler(ignoreCancelled=true) public void interact(PlayerInteractEvent e){if(e.getHand()!=org.bukkit.inventory.EquipmentSlot.HAND || e.getClickedBlock()==null || e.getAction()!=org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK)return;JsonObject fields=new JsonObject();fields.addProperty("material",e.getClickedBlock().getType().name());fields.addProperty("interaction",e.getAction().name());event(e.getPlayer(),"interact",fields,null);}
     @EventHandler public void death(PlayerDeathEvent e){event(e.getEntity(),"death",new JsonObject(),null);}
-    @EventHandler public void respawn(PlayerRespawnEvent e){Bukkit.getScheduler().runTask(plugin,()->event(e.getPlayer(),"respawn",new JsonObject(),null));}
-    @Override public void close(){closed=true;for(Entry e:active.values())e.generation=epochs.incrementAndGet();if(timer!=null)timer.cancel();HandlerList.unregisterAll(this);scripts.close();worker.shutdownNow();}
+    @EventHandler public void respawn(PlayerRespawnEvent e){Bukkit.getScheduler().runTask(plugin.host(),()->event(e.getPlayer(),"respawn",new JsonObject(),null));}
+    public boolean awaitStopped(long timeoutMillis) throws InterruptedException {return worker.awaitTermination(timeoutMillis,TimeUnit.MILLISECONDS) && scripts.awaitStopped(timeoutMillis) && shutdownPersisted;}
+    @Override public void close(){if(closed)return;closed=true;for(Entry e:active.values())e.generation=epochs.incrementAndGet();if(timer!=null)timer.cancel();HandlerList.unregisterAll(this);scripts.close();worker.getQueue().clear();worker.execute(()->{try{for(Entry e:active.values())persist(e);}catch(Exception failure){shutdownPersisted=false;}});worker.shutdown();}
 }

@@ -1,0 +1,12 @@
+# Local companion behavior and reload
+
+Keep one invited persistent body near permitted players without continuous API calls. Preserve world, identity, pause, owner, loaded-chunk and building protections.
+
+1. Terrain planner: add `CompanionPlan.WalkCell(int x,int y,int z)` and `terrainRoute(start,target,standing,clearance)`. Cardinal steps change height by at most one. Safe standing and clearance predicates forbid hazards and unloaded areas. Rising steps require clearance two blocks above the departure cell. Bound horizontal radius 16, vertical radius 8, world queries 256 per predicate and path length 64. Test rising, descending, hazards, blocked headroom, moving targets and budgets.
+2. Local locomotion: use native velocity and gravity for walking and jumping along terrain routes. Preserve same-level physical construction. Stop unsafe routes and retry companionship. Never move players or force-load chunks.
+3. Burst plans: API `companion` action `wander` selects 10–60 seconds of local safe exploration around nearby players, then returns to keeping company. Existing `move`, `follow`, `wave`, `stay` and building interrupt or supersede roaming. No local tick makes an API call.
+4. Priority: accepted addressed requests interrupt roaming immediately. Pause/dismiss stop movement; permissions and nearby loaded ground rechecked. Update tool schemas and prompts.
+5. Targeted runtime reload: retain a small stable Bukkit entrypoint, restart the plugin runtime using a fresh isolated classloader, cancel old listeners/tasks/workers before switching. Validate installed bytes and refuse incompatible bootstrap updates. Keep the server/world/player sessions running; rollback to archived previous runtime on failure. Owner-only command and safe deployment helper.
+6. Verification and handoff: run mock/pure tests and build here; preserve all server data. Agent Docker access unavailable; user applies initial updated bootstrap with the existing verified updater. Subsequent compatible runtime updates use targeted reload.
+
+Work ownership: coordinator implements terrain and companion locomotion. Independent test author owns new terrain tests. Runtime reload implementer owns bootstrap/runtime extraction after coordinator movement edits are complete. Each chunk is checkpointed and verified; no historical destructive script or paid API request is executed.
