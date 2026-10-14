@@ -122,6 +122,20 @@ require current owner authority and a permanent denylist. Memory and conversatio
 survive restarts, with bounded files and archival replacement. API mode gives
 Claude no host shell or workshop plugin installation.
 
+Ambitious construction uses compact box/shell plans and a durable `project`
+ledger with layouts, ordered stages and actual receipts. Stages continue without
+extra API calls while their authenticated owner is online; uncertain or blocked
+work requires inspection. `find_build_site` and `check_build` inspect the complete
+plot before placement. `survey_blocks` records every cell for bounded owner-only
+`landscape` batches, preserving containers, block entities and detected structures.
+Player-placed natural stone or soil cannot be distinguished from terrain by
+material alone. Landscaping remains separate from automatic saved-project steps.
+
+Claude can travel in his own boat and recover his registered unloaded body using
+its saved location without generating terrain or spawning a duplicate. Owners
+can request `/claude companion recall`; local automatic recovery uses the same
+identity checks. Boat physics and chunk recovery still need a live gameplay check.
+
 Prompt caching covers stable instructions and repeated conversation. Actual
 provider cache hits require a live API turn. Automatic events default off;
 direct requests incur Anthropic usage. `/claude pause` stops new requests.
@@ -141,7 +155,7 @@ handling and caching. Panel and startup tests use scratch data and fake
 Docker/RCON. Docker boot, real Java/Bedrock clients and a paid Claude turn still
 need validation on your desktop.
 
-Current verification: 121 core tests, 17 panel tests, 25 startup-helper tests,
+Current verification: 169 core tests, 17 panel tests, 25 startup-helper tests,
 18 upgrade-helper tests and 12 runtime-update tests passed. The shaded plugin and its script worker were
 built and checked. This does not replace
 the first live desktop session. Historical shell tests remain excluded.

@@ -539,6 +539,7 @@ public final class Companion {
         int x=job.spec.x()+op.x(),y=job.spec.y()+op.y(),z=job.spec.z()+op.z();
         GameTools.checkLocation(body.getWorld(),x,y,z);var block=body.getWorld().getBlockAt(x,y,z);
         if(!GameTools.replaceable(block))throw new IllegalStateException("Placement target changed; no overwrite");
+        GameTools.requireUnoccupied(body.getWorld(),x,y,z);
         if(body.getEyeLocation().distanceSquared(new Location(body.getWorld(),x+0.5,y+0.5,z+0.5))>4.5*4.5)
             throw new IllegalStateException("Block beyond physical reach");
         body.getEquipment().setItemInMainHand(new ItemStack(job.materials.get(op)));

@@ -4,6 +4,8 @@ import com.google.gson.*;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.Container;
+import org.bukkit.block.TileState;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -16,6 +18,9 @@ public final class GameTools implements ToolExecutor {
     private final ClaudeRuntime plugin;
     private final MemoryStore memory;
     private final CommandPolicy commands;
+    private record SurveyReceipt(UUID actor,UUID world,long expires,Map<SurveySpec.Cell,LandscapeSpec.Snapshot> cells){}
+    private final Map<String,SurveyReceipt> surveyReceipts=new LinkedHashMap<>();
+
     private static final Set<Material> VEGETATION = Set.of(Material.SHORT_GRASS, Material.TALL_GRASS,
         Material.FERN, Material.LARGE_FERN, Material.DEAD_BUSH, Material.SNOW);
     private static final Set<String> GIFTS = Set.of("STONE", "COBBLESTONE", "DIRT", "OAK_PLANKS",
@@ -59,9 +64,22 @@ public final class GameTools implements ToolExecutor {
         definitions.add(JsonParser.parseString("""
           {"name":"project","description":"Durable owner-authorized ambitious projects with a coherent saved layout and ordered steps. Save first, then start to execute stored steps without retyping plans or additional API calls. Records actual receipts; retains blocked/interrupted work and never replays uncertain steps. Actions list/read/save/start/pause/resume/execute. Each step has id,description,tool,args; tools observe_world,survey_area,check_build,build,build_in_character,experience,memory read/list/write. Up to8 projects,32 steps. save definition requires id,title,goal,layout,steps. Existing project IDs cannot be overwritten. Start work already authorized by the owner's request, without asking again.","input_schema":{"type":"object","properties":{"action":{"type":"string","enum":["list","read","save","start","pause","resume","execute"]},"id":{"type":"string"},"definition":{"type":"object"}},"required":["action"]}}
           """).getAsJsonObject());
+        for(JsonElement entry:definitions){JsonObject tool=entry.getAsJsonObject();if(!tool.get("name").getAsString().equals("companion"))continue;
+            JsonArray actions=tool.getAsJsonObject("input_schema").getAsJsonObject("properties").getAsJsonObject("action").getAsJsonArray("enum");actions.add("boat");actions.add("recall");
+            tool.addProperty("description",tool.get("description").getAsString()+" Boat boards only Claude's own tagged ordinary boat for loaded surface-water travel, then safely steps ashore. Recall safely restores the invited body near the actor using its saved identity; an owner is required. Never duplicates an unloaded known body or moves unrelated passengers.");
+        }
+        JsonObject finder=new JsonObject();finder.addProperty("name","find_build_site");finder.addProperty("description","Read-only exact site search for a full blueprint near the actor. Tests complete candidate volumes and supported floors, never sampled guesses, never modifies terrain or loads chunks. Candidate cell budget65536; returns a rewritten complete plan or a descriptive refusal. Search radius1..32, vertical_range0..8, default16/4.");
+        JsonObject finderInput=new JsonObject();finderInput.addProperty("type","object");JsonObject finderFields=new JsonObject();finderFields.add("plan",Objects.requireNonNull(buildSchema).getAsJsonObject("input_schema").deepCopy());finderFields.add("radius",JsonParser.parseString("{\"type\":\"integer\",\"minimum\":1,\"maximum\":32}"));finderFields.add("vertical_range",JsonParser.parseString("{\"type\":\"integer\",\"minimum\":0,\"maximum\":8}"));finderInput.add("properties",finderFields);finderInput.add("required",JsonParser.parseString("[\"plan\"]"));finder.add("input_schema",finderInput);definitions.add(finder);
+        definitions.add(JsonParser.parseString("""
+          {"name":"survey_blocks","description":"Exact read-only survey of every cell in a requested loaded same-world volume, at most8192 cells and32 per side. Returns survey_id and complete palette/RLE cells in x/y/z order; runs [material_index,flags,count], flags bit1 protected tile,bit2 living entity. No sampling. Refuses oversized responses instead of truncating; split a complex volume into smaller surveys. This server receipt is required for landscape.","input_schema":{"type":"object","properties":{"world":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"},"width":{"type":"integer","minimum":1,"maximum":32},"height":{"type":"integer","minimum":1,"maximum":32},"depth":{"type":"integer","minimum":1,"maximum":32}},"required":["world","x","y","z","width","height","depth"]}}
+          """).getAsJsonObject());
+        definitions.add(JsonParser.parseString("""
+          {"name":"landscape","description":"Owner-only explicit natural-terrain grading after survey_blocks. Every absolute-coordinate edit supplies expected_material from its server survey receipt and desired natural earth material or AIR. Maximum512 edits; all target cells, exact stale checks, protected tile/container neighbors, artificial surroundings, living entities, fluids and gravity hazards are checked before any changes. No drops or physics. Never edits structures, inventories or block entities. It cannot reliably distinguish player-placed natural earth/stone from terrain; review exact cells first. Stored project steps do not authorize landscaping.","input_schema":{"type":"object","properties":{"world":{"type":"string"},"survey_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":512,"items":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"},"expected_material":{"type":"string"},"material":{"type":"string"}},"required":["x","y","z","expected_material","material"]}}},"required":["world","survey_id","operations"]}}
+          """).getAsJsonObject());
         return definitions;
     }
     @Override public ToolReply execute(String name, JsonObject args, Turn turn) throws Exception {
+        try {
         if(name.equals("project"))return plugin.projects().handle(args,turn,this);
         if(name.equals("experience"))return plugin.experiences().tool(args,turn);
         if (name.equals("memory")) {
@@ -104,6 +122,7 @@ public final class GameTools implements ToolExecutor {
             }
         }
         return reply;
+        }catch(WorldRefusal refused){return error(refused.getMessage());}
     }
     ToolReply experienceAction(String name,JsonObject args,Turn turn,java.util.function.BooleanSupplier valid) throws Exception {
         ToolReply reply=plugin.onServerThread(()->{
@@ -157,6 +176,9 @@ public final class GameTools implements ToolExecutor {
             }
             case "observe_world" -> ok(snapshot(actor,plugin.companion()));
             case "survey_area" -> survey(a,actor);
+            case "survey_blocks" -> surveyBlocks(a,actor);
+            case "landscape" -> landscape(a,actor,owner,turn);
+            case "find_build_site" -> findBuildSite(a,actor,owner);
             case "check_build" -> {
                 PreparedBuild plan=prepareBuild(a,actor,owner);
                 yield ok("Plot preflight passed for "+plan.spec().blocks().size()+" planned blocks in "+plan.spec().world()+" at "+plan.spec().x()+","+plan.spec().y()+","+plan.spec().z()+". No blocks placed; execution rechecks the plot.");
@@ -306,25 +328,114 @@ public final class GameTools implements ToolExecutor {
         JsonObject out=new JsonObject();out.addProperty("world",w.getName());out.add("surface_samples",samples);
         out.addProperty("note","Samples are not build authorization. Build independently preflights the entire volume.");return ok(out.toString());
     }
+    private static final class WorldRefusal extends IllegalArgumentException {
+        WorldRefusal(String code,String message){super(code+": "+message);}
+    }
+    static void requireUnoccupied(World world,int x,int y,int z){
+        for(Entity entity:world.getNearbyEntities(new BoundingBox(x,y,z,x+1,y+1,z+1)))if(entity instanceof LivingEntity)throw new WorldRefusal("BUILD_ENTITY_OCCUPIED","Living entity occupies "+x+","+y+","+z+"; wait or choose a clear site.");
+    }
+    private static List<LivingEntity> livingIn(World world,BoundingBox bounds){
+        List<LivingEntity> entities=new ArrayList<>();for(Entity entity:world.getNearbyEntities(bounds))if(entity instanceof LivingEntity living){entities.add(living);if(entities.size()>256)throw new WorldRefusal("AREA_CROWDED","Too many living entities for a bounded safe survey or edit; choose a quieter smaller area.");}return entities;
+    }
+    private static boolean livingAt(List<LivingEntity> entities,int x,int y,int z,boolean protectSupport){
+        BoundingBox cell=new BoundingBox(x,y,z,x+1,y+(protectSupport?3:1),z+1);
+        for(LivingEntity entity:entities)if(entity.getBoundingBox().overlaps(cell))return true;return false;
+    }
+    private World nearbyWorld(String name,Player actor){
+        if(!name.equals(actor.getWorld().getName()))throw new WorldRefusal("SURVEY_WRONG_WORLD","Use the actor's current loaded world for exact terrain work.");return actor.getWorld();
+    }
+    private static void nearbyCell(Player actor,int x,int y,int z){
+        Location location=actor.getLocation();if(Math.abs((long)x-location.getBlockX())>64 || Math.abs((long)z-location.getBlockZ())>64 || Math.abs((long)y-location.getBlockY())>64)throw new WorldRefusal("TERRAIN_TOO_FAR","Every surveyed or edited cell must remain within64 blocks on each axis of the actor.");
+    }
+    private ToolReply surveyBlocks(JsonObject args,Player actor){
+        SurveySpec spec=SurveySpec.parse(args);World world=nearbyWorld(spec.world(),actor);
+        List<SurveySpec.Cell> cells=spec.cells();for(var cell:cells){nearbyCell(actor,cell.x(),cell.y(),cell.z());checkLocation(world,cell.x(),cell.y(),cell.z());}
+        List<LivingEntity> living=livingIn(world,new BoundingBox(spec.x(),spec.y(),spec.z(),spec.x()+spec.width(),spec.y()+spec.height()+2,spec.z()+spec.depth()));
+        Map<SurveySpec.Cell,LandscapeSpec.Snapshot> observed=new LinkedHashMap<>();Map<String,Integer> paletteIds=new LinkedHashMap<>();JsonArray palette=new JsonArray(),runs=new JsonArray();int priorMaterial=-1,priorFlags=-1,count=0;
+        for(var cell:cells){
+            Block block=world.getBlockAt(cell.x(),cell.y(),cell.z());String material=block.getType().name();boolean protectedState=block.getState() instanceof TileState || block.getState() instanceof Container;
+            boolean occupied=livingAt(living,cell.x(),cell.y(),cell.z(),true);observed.put(cell,new LandscapeSpec.Snapshot(material,protectedState,occupied,true));
+            int index=paletteIds.computeIfAbsent(material,key->{palette.add(key);return palette.size()-1;}),flags=(protectedState?1:0)|(occupied?2:0);
+            if(index==priorMaterial && flags==priorFlags)count++;else{if(count>0)appendRun(runs,priorMaterial,priorFlags,count);priorMaterial=index;priorFlags=flags;count=1;}
+        }
+        appendRun(runs,priorMaterial,priorFlags,count);
+        String id=UUID.randomUUID().toString();JsonObject output=new JsonObject();output.addProperty("survey_id",id);output.addProperty("world",world.getName());output.add("origin",JsonParser.parseString("["+spec.x()+","+spec.y()+","+spec.z()+"]"));output.add("dimensions",JsonParser.parseString("["+spec.width()+","+spec.height()+","+spec.depth()+"]"));output.addProperty("order","x/y/z; z advances fastest");output.addProperty("cell_count",cells.size());output.add("palette",palette);output.add("runs",runs);output.addProperty("flags","1=protected tile/container;2=living entity or its support. Every requested cell represented; no sampling. Receipt expires after10 minutes.");
+        String text=output.toString();if(text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>7500)return error("SURVEY_RESPONSE_TOO_LARGE: Exact data exceeds the safe API receipt size. Request smaller adjacent volumes; no partial or sampled receipt was created.");
+        long now=System.currentTimeMillis();surveyReceipts.entrySet().removeIf(entry->entry.getValue().expires()<now);
+        while(surveyReceipts.size()>=16)surveyReceipts.remove(surveyReceipts.keySet().iterator().next());
+        surveyReceipts.put(id,new SurveyReceipt(actor.getUniqueId(),world.getUID(),now+600_000,Map.copyOf(observed)));return ok(text);
+    }
+    private static void appendRun(JsonArray runs,int material,int flags,int count){JsonArray run=new JsonArray();run.add(material);run.add(flags);run.add(count);runs.add(run);}
+    private ToolReply landscape(JsonObject args,Player actor,boolean owner,Turn turn){
+        if(!owner)throw new WorldRefusal("LANDSCAPE_OWNER_REQUIRED","Natural terrain editing requires a currently authorized owner.");
+        LandscapeSpec spec=LandscapeSpec.parse(args);World world=nearbyWorld(spec.world(),actor);SurveyReceipt receipt=surveyReceipts.get(spec.surveyId());
+        if(receipt==null || receipt.expires()<System.currentTimeMillis() || !receipt.actor().equals(actor.getUniqueId()) || !receipt.world().equals(world.getUID()))throw new WorldRefusal("LANDSCAPE_SURVEY_REQUIRED","Request a fresh exact survey_blocks receipt for this actor and world before grading terrain.");
+        int minX=Integer.MAX_VALUE,minY=Integer.MAX_VALUE,minZ=Integer.MAX_VALUE,maxX=Integer.MIN_VALUE,maxY=Integer.MIN_VALUE,maxZ=Integer.MIN_VALUE;
+        for(var edit:spec.edits()){nearbyCell(actor,edit.x(),edit.y(),edit.z());checkLocation(world,edit.x(),edit.y(),edit.z());minX=Math.min(minX,edit.x());minY=Math.min(minY,edit.y());minZ=Math.min(minZ,edit.z());maxX=Math.max(maxX,edit.x());maxY=Math.max(maxY,edit.y());maxZ=Math.max(maxZ,edit.z());}
+        // An edit list must fit one surveyed footprint, so this entity query remains bounded too.
+        if((long)maxX-minX>31 || (long)maxY-minY>31 || (long)maxZ-minZ>31)throw new WorldRefusal("LANDSCAPE_FOOTPRINT_LIMIT","A landscape batch must fit the exact surveyed32-block-side footprint.");
+        List<LivingEntity> living=livingIn(world,new BoundingBox(minX,minY,minZ,maxX+1,maxY+3,maxZ+1));Map<LandscapeSpec.Edit,LandscapeSpec.Snapshot> current=new LinkedHashMap<>();
+        for(var edit:spec.edits()){
+            Block block=world.getBlockAt(edit.x(),edit.y(),edit.z());boolean protectedState=block.getState() instanceof TileState || block.getState() instanceof Container;
+            // Preserve containers and block entities including their support; also refuse fluid,
+            // falling-block and artificial surroundings rather than destabilizing a structure.
+            for(int dx=-1;dx<=1;dx++)for(int dy=-1;dy<=1;dy++)for(int dz=-1;dz<=1;dz++){
+                int x=edit.x()+dx,y=edit.y()+dy,z=edit.z()+dz;checkLocation(world,x,y,z);Block neighbor=world.getBlockAt(x,y,z);
+                if(neighbor.getState() instanceof TileState || neighbor.getState() instanceof Container || neighbor.isLiquid() || neighbor.getType().hasGravity() || !LandscapeSpec.natural(neighbor.getType().name()))protectedState=true;
+            }
+            Material replacement=Material.matchMaterial(edit.material());if(replacement==null || replacement.hasGravity())throw new WorldRefusal("LANDSCAPE_UNSAFE_FILL","Use stable approved natural earth fill; falling sand or gravel is unavailable.");
+            current.put(edit,new LandscapeSpec.Snapshot(block.getType().name(),protectedState,livingAt(living,edit.x(),edit.y(),edit.z(),true),true));
+        }
+        List<LandscapeSpec.Edit> validated;
+        try{validated=spec.preflight(edit->receipt.cells().get(new SurveySpec.Cell(edit.x(),edit.y(),edit.z())),current::get);}
+        catch(IllegalArgumentException refused){throw new WorldRefusal("LANDSCAPE_PREFLIGHT_REFUSED",refused.getMessage()+". No changes made; inspect or survey again.");}
+        if(!plugin.currentOwner(turn) || plugin.isPaused())throw new WorldRefusal("LANDSCAPE_AUTHORIZATION_CHANGED","Owner or pause state changed; no terrain edits made.");
+        for(var edit:validated)world.getBlockAt(edit.x(),edit.y(),edit.z()).setType(Objects.requireNonNull(Material.matchMaterial(edit.material())),false);
+        surveyReceipts.remove(spec.surveyId());return ok("Landscaped "+validated.size()+" exactly surveyed natural cells without physics or drops. Containers, block entities, surrounding structures and living entities were protected. Survey again before another batch.");
+    }
+    private ToolReply findBuildSite(JsonObject args,Player actor,boolean owner){
+        ExperienceSpec.keys(args,Set.of("plan","radius","vertical_range"));if(!args.has("plan") || !args.get("plan").isJsonObject())throw new WorldRefusal("SITE_BLUEPRINT_REQUIRED","Provide the complete intended build plan, including all compact operations.");
+        JsonObject blueprint=args.getAsJsonObject("plan");BuildSpec template=BuildSpec.parse(blueprint);World world=nearbyWorld(template.world(),actor);int radius=ExperienceSpec.integer(args,"radius",16,1,32),vertical=ExperienceSpec.integer(args,"vertical_range",4,0,8);
+        if(template.replaceExisting())throw new WorldRefusal("SITE_NONREPLACING_REQUIRED","Site search only supports a non-overwriting complete blueprint.");
+        // Start beyond the actor's feet, so large foundations don't spend the budget on occupied plots.
+        int centerX=actor.getLocation().getBlockX()+2,centerZ=actor.getLocation().getBlockZ()+2,baseY=actor.getLocation().getBlockY();
+        String last="No supported clear candidate";int tested=0;
+        for(var origin:BuildSiteSearch.candidates(centerX,baseY,centerZ,radius,vertical,template.width(),template.height(),template.depth())){
+            tested++;BuildSpec candidate=new BuildSpec(template.world(),origin.x(),origin.y(),origin.z(),template.width(),template.height(),template.depth(),false,template.blocks());
+            try {
+                for(int dx=0;dx<candidate.width();dx++)for(int dz=0;dz<candidate.depth();dz++){
+                    int x=candidate.x()+dx,z=candidate.z()+dz,y=candidate.y()-1;checkLocation(world,x,y,z);Block floor=world.getBlockAt(x,y,z);
+                    if(!floor.getType().isSolid() || !safeLanding(floor.getType()) || floor.getState() instanceof TileState || floor.getState() instanceof Container)throw new WorldRefusal("SITE_UNSUPPORTED_FLOOR","Whole footprint requires safe solid support; no container or block-entity foundations.");
+                }
+                prepareBuild(candidate,actor,owner);JsonObject output=new JsonObject();output.addProperty("world",world.getName());output.addProperty("x",candidate.x());output.addProperty("y",candidate.y());output.addProperty("z",candidate.z());output.addProperty("checked_candidates",tested);output.addProperty("placed_blocks",0);output.addProperty("note","Every cell and floor of this full blueprint passed current preflight. Reuse exactly this blueprint at these origin coordinates; execution must recheck.");
+                JsonObject plan=blueprint.deepCopy();plan.addProperty("x",candidate.x());plan.addProperty("y",candidate.y());plan.addProperty("z",candidate.z());output.add("plan",plan);
+                if(output.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>7500){output.remove("plan");output.addProperty("plan_omitted","Blueprint exceeds receipt size; preserve original operations and change only x/y/z to returned origin.");}
+                return ok(output.toString());
+            }catch(WorldRefusal refusal){last=refusal.getMessage();}
+        }
+        return error("SITE_SEARCH_EXHAUSTED: No complete blueprint site passed within "+tested+" bounded candidates and65536 cell visits. Last reason: "+last+". Choose another nearby area or explicitly survey natural terrain for preparatory landscape; never overwrite an obstruction.");
+    }
     private record PreparedBuild(BuildSpec spec,World world,Map<BuildSpec.BlockPlacement,Material> materials) {}
-    private PreparedBuild prepareBuild(JsonObject a,Player actor,boolean owner) {
-        BuildSpec s=BuildSpec.parse(a); World w=Bukkit.getWorld(s.world());
-        if(w==null || (!owner && !w.equals(actor.getWorld()))) throw new IllegalArgumentException("Build requires a loaded world; ordinary players use their own world");
-        if(s.replaceExisting()) throw new IllegalArgumentException("Existing blocks cannot be replaced; choose clear ground");
+    private PreparedBuild prepareBuild(JsonObject a,Player actor,boolean owner) {return prepareBuild(BuildSpec.parse(a),actor,owner);}
+    private PreparedBuild prepareBuild(BuildSpec s,Player actor,boolean owner) {
+        World w=Bukkit.getWorld(s.world());
+        if(w==null || (!owner && !w.equals(actor.getWorld()))) throw new WorldRefusal("BUILD_WORLD_UNAVAILABLE","Build requires a loaded world; ordinary players use their own world");
+        if(s.replaceExisting()) throw new WorldRefusal("BUILD_REPLACEMENT_REFUSED","Existing blocks cannot be replaced; choose clear ground");
         if(!owner && (Math.abs((long)s.x()-actor.getLocation().getBlockX())>64
-            || Math.abs((long)s.z()-actor.getLocation().getBlockZ())>64)) throw new IllegalArgumentException("Build must be within 64 blocks of the actor");
+            || Math.abs((long)s.z()-actor.getLocation().getBlockZ())>64)) throw new WorldRefusal("BUILD_TOO_FAR","Build must be within64 blocks of the actor");
         Map<BuildSpec.BlockPlacement,Material> materials=new LinkedHashMap<>();
         for(var op:s.blocks()) {
             Material material=Material.matchMaterial(op.material());
             if(material==null || !material.isBlock() || material.isAir() || !BuildSpec.safeMaterial(material.name()))
-                throw new IllegalArgumentException("Unsupported building material");
+                throw new WorldRefusal("BUILD_MATERIAL_UNSUPPORTED","A planned material is unavailable, hazardous or not a block");
             materials.put(op,material);
         }
         // Validate every location and obstruction before changing the first block.
         for(int dx=0;dx<s.width();dx++) for(int dy=0;dy<s.height();dy++) for(int dz=0;dz<s.depth();dz++) {
             int x=s.x()+dx,y=s.y()+dy,z=s.z()+dz; checkLocation(w,x,y,z); Block block=w.getBlockAt(x,y,z);
-            if(!replaceable(block))throw new IllegalArgumentException("Build volume contains existing blocks at " + x + "," + y + "," + z);
+            if(!replaceable(block))throw new WorldRefusal("BUILD_OBSTRUCTION","Existing "+block.getType().name()+" at "+x+","+y+","+z+" lies inside the full plot. Nothing placed; use find_build_site or survey explicitly authorized natural landscaping. Containers, block entities and structures are preserved.");
         }
+        if(!livingIn(w,new BoundingBox(s.x(),s.y(),s.z(),s.x()+s.width(),s.y()+s.height(),s.z()+s.depth())).isEmpty())throw new WorldRefusal("BUILD_ENTITY_OCCUPIED","A living entity occupies the proposed build volume. No blocks placed; choose a clear plot or wait.");
         return new PreparedBuild(s,w,materials);
     }
     private ToolReply build(JsonObject a,Player actor,boolean owner) {
@@ -344,12 +455,12 @@ public final class GameTools implements ToolExecutor {
         if(target==null) throw new IllegalArgumentException("Exact online player name required");return target;
     }
     static boolean replaceable(Block block) {
-        return !(block.getState() instanceof Container) && (block.getType().isAir() || VEGETATION.contains(block.getType()));
+        return !(block.getState() instanceof TileState) && !(block.getState() instanceof Container) && (block.getType().isAir() || VEGETATION.contains(block.getType()));
     }
     static void checkLocation(World w,int x,int y,int z) {
         if(Math.abs((long)x)>29_999_984 || Math.abs((long)z)>29_999_984 || y<w.getMinHeight() || y>=w.getMaxHeight()
             || !w.isChunkLoaded(x>>4,z>>4) || !w.getWorldBorder().isInside(new Location(w,x+0.5,y,z+0.5)))
-            throw new IllegalArgumentException("Location is outside loaded safe world bounds");
+            throw new WorldRefusal("WORLD_BOUNDS_UNAVAILABLE","Location "+x+","+y+","+z+" is outside the border/build height or its chunk is not loaded; no chunk was loaded");
     }
     static boolean safeLanding(Material material) {
         return BuildSpec.safeMaterial(material.name()) && !Set.of("WITHER_ROSE","HONEY_BLOCK","SLIME_BLOCK",

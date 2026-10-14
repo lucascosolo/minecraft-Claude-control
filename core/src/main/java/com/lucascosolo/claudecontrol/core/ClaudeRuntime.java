@@ -269,9 +269,11 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
             }
             lastOutcome="Last turn completed";
         }catch(Exception e){
-            String safe=e.getMessage()==null?"":e.getMessage();
-            if(safe.contains("HTTP 401") || safe.contains("HTTP 403")){paused=true;lastOutcome="Authentication rejected; paused";}
-            else lastOutcome="Turn failed; existing world actions may already have completed";
+            String safe=e instanceof ApiAgent.TurnFailure || e instanceof ApiAgent.ApiFailure?e.getMessage():"";
+            if(safe!=null && (safe.contains("HTTP 401") || safe.contains("HTTP 403"))) {
+                paused=true;lastOutcome=e instanceof ApiAgent.TurnFailure?safe+" Claude is paused until an owner fixes authentication.":"Authentication rejected; paused";
+            } else if(e instanceof ApiAgent.TurnFailure)lastOutcome=safe;
+            else lastOutcome="Turn failed; existing world actions may already have completed. Inspect saved project receipts and the world before retrying";
             if(!stopping)tellPlayer(turn.actorId(),"Claude: "+lastOutcome+". An owner can check /claude status.");
             getLogger().warning(lastOutcome);
         }finally{

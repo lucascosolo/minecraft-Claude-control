@@ -14,6 +14,7 @@ final class CompanionWater {
     private final Object identityLock;
     private final NamespacedKey tag;
     private volatile UUID knownId;
+    private boolean creationPending;
     private OakBoat boat;
     private List<CompanionPlan.Cell> route=List.of();
     private int step,surfaceY,stalled;
@@ -25,6 +26,7 @@ final class CompanionWater {
         tag=new NamespacedKey(plugin.host(),"claude_companion_boat");
         String saved=registry.read("boat-uuid.txt").trim();
         if(!saved.isEmpty())knownId=UUID.fromString(saved);
+        creationPending=!registry.read("boat-creation.json").isBlank();
         adopt();
     }
     void persistIdentity() throws Exception {
@@ -86,15 +88,21 @@ final class CompanionWater {
     private boolean create(Location spot) throws Exception {
         adopt();
         if(knownId!=null || owned())return owned();
+        if(creationPending)return false;
         // A loaded tagged vehicle of an unsupported type is still an existing identity.
         for(World world:Bukkit.getWorlds())for(Entity entity:world.getEntities())
             if(entity.getPersistentDataContainer().has(tag,PersistentDataType.BYTE))return false;
         synchronized(identityLock) {
+            JsonObject intent=new JsonObject();intent.addProperty("world",spot.getWorld().getName());
+            intent.addProperty("x",spot.getX());intent.addProperty("y",spot.getY());intent.addProperty("z",spot.getZ());
+            // Persist uncertainty before spawning, so an unloaded unrecorded boat cannot be duplicated.
+            registry.write("boat-creation.json",intent.toString());creationPending=true;
             boat=spot.getWorld().spawn(spot,OakBoat.class,e->{
                 e.getPersistentDataContainer().set(tag,PersistentDataType.BYTE,(byte)1);
                 e.setPersistent(true);e.setInvulnerable(true);e.setGravity(true);
             });
             knownId=boat.getUniqueId();persistIdentity();
+            registry.archive("boat-creation.json");creationPending=false;
         }
         return true;
     }
