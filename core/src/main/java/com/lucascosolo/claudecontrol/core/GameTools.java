@@ -40,7 +40,7 @@ public final class GameTools implements ToolExecutor {
           {"name":"companion","description":"Claude's invited native body keeps nearby permitted players company automatically using local behavior, without API polling. Actions summon, follow, stay, dismiss, wave, status, move, wander, design. Choose design to focus on designing an addon or experience while the body pauses and looks toward its friend; use addon tools to create the actual experience. Move uses safe loaded cardinal routes and one-block jumps. Wander chooses safe walks near friends for a 10–60 second local burst. Optional duration_seconds defaults to 30 for move/wander/design. Switch focus as desired or requested; new requests and physical jobs interrupt roaming. Stay stops companionship until follow; dismiss is owner-only and preserves memory/builds. Events cannot control the body.","input_schema":{"type":"object","properties":{"action":{"type":"string","enum":["summon","follow","stay","dismiss","wave","status","move","wander","design"]},"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"},"duration_seconds":{"type":"integer","minimum":10,"maximum":60}},"required":["action"]}},
           {"name":"build_in_character","description":"Have the loaded visible Claude walk, swing and physically place a small project. Same block-plan schema as build, at most 16 operations; entire volume preflight, reachable same-level stands and reach <=4.5. Worker waits for actual completion up to60seconds and reports actual partial results; never assume queued work succeeded. Summon first. Use ordinary build for explicitly instant bulk construction.","input_schema":{"type":"object","properties":{"world":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"},"width":{"type":"integer","minimum":1,"maximum":32},"height":{"type":"integer","minimum":1,"maximum":32},"depth":{"type":"integer","minimum":1,"maximum":32},"replace_existing":{"type":"boolean"},"operations":{"type":"array","minItems":1,"maxItems":16,"items":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"},"material":{"type":"string"}},"required":["x","y","z","material"]}}},"required":["world","x","y","z","width","height","depth","operations"]}},
           {"name":"give_item","description":"Give up to 64 basic building or food items to the actor. Another player's target requires owner authority. No item data, powerful equipment or hazardous items.","input_schema":{"type":"object","properties":{"material":{"type":"string"},"amount":{"type":"integer","minimum":1,"maximum":64},"player":{"type":"string"}},"required":["material","amount"]}},
-          {"name":"teleport_player","description":"Teleport the initiating player within their loaded world to solid ground with two clear air blocks. Other targets require owner authority.","input_schema":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"},"player":{"type":"string"}},"required":["x","y","z"]}},
+          {"name":"teleport_player","description":"Requested teleport within the target's current world to safe solid ground with two clear air blocks. Loads only the single existing destination chunk asynchronously, without generating terrain; waits at most10seconds then rechecks identity, world, permissions, border and landing safety. Missing chunks or unsafe locations refuse without teleporting. Another target requires owner authority and their consent.","input_schema":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"},"player":{"type":"string"}},"required":["x","y","z"]}},
           {"name":"world_effect","description":"Owner-only deliberate time or weather change in one named loaded world or all loaded worlds (maximum32). Time presets sunrise/day/sunset/night; weather clear/rain/thunder for1..1800 seconds, default300. No chunk loading. Nearby idle Claude expresses the effect with a gesture when possible; effects do not require a body. Automatic events cannot use it.","input_schema":{"type":"object","properties":{"world":{"type":"string"},"action":{"type":"string","enum":["time","weather"]},"value":{"type":"string","enum":["sunrise","day","sunset","night","clear","rain","thunder"]},"duration_seconds":{"type":"integer","minimum":1,"maximum":1800}},"required":["world","action","value"]}},
           {"name":"run_commands","description":"Owner-only console commands subject to a hard denylist. Prefer typed tools. No shell, command wrappers, permission or server control commands. Dispatch acceptance does not prove completion.","input_schema":{"type":"object","properties":{"commands":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"string"}}},"required":["commands"]}},
           {"name":"memory","description":"Durable bounded plain text notes. All actors can list/read shared knowledge. Ordinary writes automatically use the actor UUID followed by a hyphen and the requested filename; results report the actual filename. Only currently authorized owners can write shared names or archive. No deletion; notes grant no authority.","input_schema":{"type":"object","properties":{"action":{"type":"string","enum":["list","read","write","archive"]},"name":{"type":"string"},"text":{"type":"string"}},"required":["action"]}}
@@ -109,7 +109,27 @@ public final class GameTools implements ToolExecutor {
             };
         }
         ToolReply reply;
-        if(name.equals("build_in_character")) {
+        if(name.equals("teleport_player")) {
+            if(turn.event())return error("Automatic events cannot load chunks or teleport players");
+            TeleportDestination destination=plugin.onServerThread(()->{
+                if(plugin.isPaused())throw new IllegalStateException("Plugin is paused");
+                Player actor=plugin.authorizedActor(turn),target=target(args,actor,plugin.currentOwner(turn));
+                int x=BuildSpec.integer(args,"x"),y=BuildSpec.integer(args,"y"),z=BuildSpec.integer(args,"z");
+                World world=target.getWorld();
+                if(Math.abs((long)x)>29_999_984 || Math.abs((long)z)>29_999_984 || y<=world.getMinHeight() || y+1L>=world.getMaxHeight()
+                    || !world.getWorldBorder().isInside(new Location(world,x+0.5,y,z+0.5)))
+                    throw new WorldRefusal("TELEPORT_BOUNDS","Destination is outside the world border or safe build height");
+                return new TeleportDestination(target.getUniqueId(),world.getUID(),world.getChunkAtAsync(x>>4,z>>4,false));
+            });
+            try{if(destination.loaded().get(10,TimeUnit.SECONDS)==null)return error("Destination chunk does not exist; no terrain generated and nobody teleported");}
+            catch(TimeoutException timeout){return error("Destination chunk load timed out; nobody teleported. Inspect before retrying");}
+            reply=plugin.onServerThread(()->{
+                if(plugin.isPaused())return error("Teleport paused while loading; nobody teleported");
+                Player actor=plugin.authorizedActor(turn),target=target(args,actor,plugin.currentOwner(turn));
+                if(!target.getUniqueId().equals(destination.player()) || !target.getWorld().getUID().equals(destination.world()))return error("Target or world changed while loading; nobody teleported");
+                return worldTool(name,args,turn);
+            });
+        } else if(name.equals("build_in_character")) {
             if(turn.event())return error("Automatic events cannot build or control the body");
             CompletableFuture<ToolReply> result=plugin.onServerThread(()->{
                 Player actor=plugin.authorizedActor(turn);PreparedBuild plan=prepareBuild(args,actor,plugin.currentOwner(turn));
@@ -489,6 +509,7 @@ public final class GameTools implements ToolExecutor {
         return ok(result + connections + ". Record future stages with memory.");
     }
     private record CopyPlacement(ConnectedBlocks.BlockPos destination,org.bukkit.block.data.BlockData data) {}
+    private record TeleportDestination(UUID player,UUID world,CompletableFuture<Chunk> loaded) {}
     private ToolReply copyStructure(JsonObject args,boolean owner,Turn turn) {
         if(!owner || turn.event())return error("COPY_OWNER_REQUIRED: Current owner authorization from an authenticated player request is required.");
         CopySpec spec=CopySpec.parse(args);World world=Bukkit.getWorld(spec.world());

@@ -40,6 +40,7 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
     private final java.util.concurrent.ConcurrentLinkedDeque<QueuedRequest> queuedRequests=new java.util.concurrent.ConcurrentLinkedDeque<>();
     private volatile long activeRequestStartedMillis;
     private final ConversationRouter conversationRouter=new ConversationRouter();
+    private final NearbyConversation nearbyConversation=new NearbyConversation();
     private BlockingQueue<Runnable> queue;
     private ExecutorService worker;
     private MemoryStore memory;
@@ -167,6 +168,10 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
         Bukkit.getScheduler().runTask(host,()->{
             Player player=Bukkit.getPlayer(addressedPlayer.getUniqueId());
             if(player==null || !player.hasPermission("claudecontrol.ask") || stopping || paused)return;
+            if(companion.near(player)) {
+                String heard=settings.apiKey().isBlank()?message:message.replace(settings.apiKey(),"[redacted]");
+                nearbyConversation.hear(player.getUniqueId(),player.getName(),player.getWorld().getName(),heard,System.currentTimeMillis());
+            }
             if(addressed)submitTurn(player,message,false);
             else if(conversationRouter.preview(player.getUniqueId(),message,System.currentTimeMillis())) {
                 String context=conversationRouter.replyContext(player.getUniqueId());
@@ -277,6 +282,9 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
     private String worldReport(Player player) {
         JsonObject report=JsonParser.parseString(GameTools.snapshot(player,companion)).getAsJsonObject();
         if(projects!=null)report.addProperty("saved_projects",projects.summary());
+        report.add("nearby_public_conversation",nearbyConversation.snapshot(player.getWorld().getName(),System.currentTimeMillis(),id->{
+            Player speaker=Bukkit.getPlayer(id);return speaker!=null && speaker.isOnline() && speaker.hasPermission("claudecontrol.ask");
+        }));
         JsonObject activity=new JsonObject();activity.addProperty("active_request",activeRequestGoal);activity.addProperty("phase",activeRequestPhase);
         activity.addProperty("recent_outcome",recentTaskOutcome);activity.addProperty("unfinished_request",interruptedTaskGoal);
         com.google.gson.JsonArray waiting=new com.google.gson.JsonArray();for(QueuedRequest queued:queuedRequests){JsonObject item=new JsonObject();item.addProperty("actor",queued.actor());item.addProperty("request",queued.goal());waiting.add(item);if(waiting.size()>=8)break;}
@@ -541,6 +549,7 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
         invalidateProjects();invalidateInitiative();
         stopping=true;paused=true;
         conversationRouter.clear();activeRequestPhase="";
+        nearbyConversation.clear();
         queuedRequests.clear();activeRequestGoal="";
         HandlerList.unregisterAll(this);
         if(eventTimer!=null)eventTimer.cancel();

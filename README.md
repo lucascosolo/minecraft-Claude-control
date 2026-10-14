@@ -131,6 +131,23 @@ plot before placement. `survey_blocks` records every cell for bounded owner-only
 Player-placed natural stone or soil cannot be distinguished from terrain by
 material alone. Landscaping remains separate from automatic saved-project steps.
 
+`copy_structure` provides compact, owner-requested copies of existing sections,
+preserving block data and orientation while skipping containers and block entities.
+Both complete volumes are inspected; destinations must be clear. New construction
+refreshes nearby pane, fence, wall and stair connections without general physics.
+Bundled architectural guidance covers palettes, proportions, circulation and roofs;
+all construction and inspection stay inside Minecraft, with no external preview.
+
+Claude's observations include current and queued work, interrupted requests and
+recent nearby public conversation. Casual remarks can inspire scheduled choices
+without triggering an API request for every message or granting new permissions.
+This bounded conversation buffer is temporary and clears on runtime reload.
+Local gestures and curiosity need no API calls. The companion appearance tool
+supports plain, hatter and explorer outfits and a Minecraft account skin request;
+actual skin resolution depends on the client. Requested player teleports may load
+one existing destination chunk asynchronously, without generating terrain, before
+rechecking identity, permissions and landing safety.
+
 Claude can travel in his own boat and recover his registered unloaded body using
 its saved location without generating terrain or spawning a duplicate. Owners
 can request `/claude companion recall`; local automatic recovery uses the same
@@ -155,7 +172,7 @@ handling and caching. Panel and startup tests use scratch data and fake
 Docker/RCON. Docker boot, real Java/Bedrock clients and a paid Claude turn still
 need validation on your desktop.
 
-Current verification: 174 core tests, 17 panel tests, 25 startup-helper tests,
+Current verification: 229 core tests, 17 panel tests, 25 startup-helper tests,
 18 upgrade-helper tests and 14 runtime-update tests passed. The shaded plugin and its script worker were
 built and checked. This does not replace
 the first live desktop session. Historical shell tests remain excluded.
