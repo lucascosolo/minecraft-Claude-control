@@ -20,7 +20,8 @@ public final class InitiativePolicy {
             case "send_chat" -> {ExperienceSpec.keys(args,Set.of("message","private","broadcast"));ExperienceSpec.text(args,"message",1200,true);ExperienceSpec.bool(args,"private",false);if(ExperienceSpec.bool(args,"broadcast",false))throw refused();}
             case "companion" -> {
                 String action=ExperienceSpec.text(args,"action",32,true);
-                if(!Set.of("follow","wave","status","move","wander","design").contains(action))throw refused();
+                if(!Set.of("follow","wave","status","move","wander","design","appearance").contains(action))throw refused();
+                if(action.equals("appearance")){AppearanceSpec.parse(args,AppearanceSpec.defaults());break;}
                 ExperienceSpec.keys(args,action.equals("move")?Set.of("action","x","y","z","duration_seconds"):Set.of("action","duration_seconds"));
                 if(action.equals("move"))for(String key:Set.of("x","y","z"))BuildSpec.integer(args,key);
                 ExperienceSpec.integer(args,"duration_seconds",30,10,60);

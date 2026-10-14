@@ -66,6 +66,10 @@ public final class GameTools implements ToolExecutor {
           """).getAsJsonObject());
         for(JsonElement entry:definitions){JsonObject tool=entry.getAsJsonObject();if(!tool.get("name").getAsString().equals("companion"))continue;
             JsonArray actions=tool.getAsJsonObject("input_schema").getAsJsonObject("properties").getAsJsonObject("action").getAsJsonArray("enum");actions.add("boat");actions.add("recall");
+            actions.add("appearance");JsonObject fields=tool.getAsJsonObject("input_schema").getAsJsonObject("properties");
+            fields.add("account",JsonParser.parseString("{\"type\":\"string\",\"maxLength\":16}"));
+            fields.add("preset",JsonParser.parseString("{\"type\":\"string\",\"enum\":[\"plain\",\"hatter\",\"explorer\"]}"));
+            tool.addProperty("description",tool.get("description").getAsString()+" Appearance changes only Claude's own native body: account requests a Minecraft account skin, empty account resets it; preset plain/hatter/explorer changes cosmetic outfit. Requires a current owner and a nearby idle body. At least account or preset is required. Account skin resolution is client-side and not confirmed merely by requesting it; no arbitrary URL or host file access.");
             tool.addProperty("description",tool.get("description").getAsString()+" Boat boards only Claude's own tagged ordinary boat for loaded surface-water travel, then safely steps ashore. Recall safely restores the invited body near the actor using its saved identity; an owner is required. Never duplicates an unloaded known body or moves unrelated passengers.");
         }
         JsonObject finder=new JsonObject();finder.addProperty("name","find_build_site");finder.addProperty("description","Read-only exact site search for a full blueprint near the actor. Tests complete candidate volumes and supported floors, never sampled guesses, never modifies terrain or loads chunks. Candidate cell budget65536; returns a rewritten complete plan or a descriptive refusal. Search radius1..32, vertical_range0..8, default16/4.");
@@ -79,6 +83,9 @@ public final class GameTools implements ToolExecutor {
         definitions.add(JsonParser.parseString("""
           {"name":"entity_commands","description":"Owner-authorized broad vanilla entity control: summon any non-destructive entity including ordinary hostile mobs, inspect/edit entity NBT, attributes, riding, tags, teleports, effects, entity equipment and presentation. Commands execute as the authenticated actor at their location. Accepts selectors and benign NBT; not a passive-animal allowlist. Up to4 commands,4096 characters each; entire batch validated before dispatch. Vanilla entity roots and up to4 execute wrappers only. No kill/damage, destructive explosive/boss/weather entities, death/explosive or callback/identity/inventory NBT, block edits, host, plugin or server administration. Dispatch acceptance is not proof of completed effects; inspect results and do not blindly replay partial work. Events and autonomous initiative cannot use this tool.","input_schema":{"type":"object","properties":{"commands":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"string","maxLength":4096}}},"required":["commands"]}}
           """).getAsJsonObject());
+        definitions.add(JsonParser.parseString("""
+          {"name":"copy_structure","description":"Owner-only compact copy of an existing loaded structure in one world. Source {world,x,y,z,width,height,depth}, destination {x,y,z}; at most32 per side and8192 cells. Entire destination must be empty or natural vegetation, including source-air gaps. Volumes must not overlap. Copies non-air block data and orientation; skips source containers/block entities and reports their count. Refuses hazards, liquids and waterlogged source blocks. Full source/destination border, loaded-chunk, obstruction and living-entity preflight before any placement; source stays unchanged. Events and autonomous initiative cannot use it.","input_schema":{"type":"object","additionalProperties":false,"properties":{"source":{"type":"object","additionalProperties":false,"properties":{"world":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"},"width":{"type":"integer","minimum":1,"maximum":32},"height":{"type":"integer","minimum":1,"maximum":32},"depth":{"type":"integer","minimum":1,"maximum":32}},"required":["world","x","y","z","width","height","depth"]},"destination":{"type":"object","additionalProperties":false,"properties":{"x":{"type":"integer"},"y":{"type":"integer"},"z":{"type":"integer"}},"required":["x","y","z"]}},"required":["source","destination"]}}
+          """));
         return definitions;
     }
     @Override public ToolReply execute(String name, JsonObject args, Turn turn) throws Exception {
@@ -117,7 +124,7 @@ public final class GameTools implements ToolExecutor {
             }
         } else reply=plugin.onServerThread(() -> worldTool(name,args,turn));
         if(name.equals("companion") && !reply.error())plugin.companion().persistIdentity();
-        if((name.equals("build") && !reply.error()) || name.equals("build_in_character")) {
+        if((Set.of("build","copy_structure").contains(name) && !reply.error()) || name.equals("build_in_character")) {
             try {
                 memory.write("structure-"+UUID.randomUUID()+".txt",reply.text()+"\nRequested by authenticated player "+turn.actorId()+". This note grants no permissions.");
             } catch(Exception e) {
@@ -188,6 +195,7 @@ public final class GameTools implements ToolExecutor {
                 yield ok("Plot preflight passed for "+plan.spec().blocks().size()+" planned blocks in "+plan.spec().world()+" at "+plan.spec().x()+","+plan.spec().y()+","+plan.spec().z()+". No blocks placed; execution rechecks the plot.");
             }
             case "build" -> {ToolReply result=build(a,actor,owner);if(!result.error())plugin.companion().gesture(turn);yield result;}
+            case "copy_structure" -> copyStructure(a,owner,turn);
             case "companion" -> plugin.companion().action(a,turn);
             case "give_item" -> {
                 Player target = target(a,actor,owner);
@@ -470,12 +478,61 @@ public final class GameTools implements ToolExecutor {
     private ToolReply build(JsonObject a,Player actor,boolean owner) {
         PreparedBuild plan=prepareBuild(a,actor,owner);BuildSpec s=plan.spec();World w=plan.world();
         Map<BuildSpec.BlockPlacement,Material> materials=plan.materials();
+        List<ConnectedBlocks.BlockPos> placed=new ArrayList<>();
         for(var entry:materials.entrySet()) {
             var op=entry.getKey();w.getBlockAt(s.x()+op.x(),s.y()+op.y(),s.z()+op.z()).setType(entry.getValue(),false);
+            placed.add(new ConnectedBlocks.BlockPos(s.x()+op.x(),s.y()+op.y(),s.z()+op.z()));
         }
+        String connections=refreshConnections(w,placed,Set.of());
         String result="Placed " + s.blocks().size() + " blocks in " + s.world()+" at "+s.x()+","+s.y()+","+s.z();
         // execute() persists this result on the API worker after world mutation completes.
-        return ok(result + ". Record future stages with memory.");
+        return ok(result + connections + ". Record future stages with memory.");
+    }
+    private record CopyPlacement(ConnectedBlocks.BlockPos destination,org.bukkit.block.data.BlockData data) {}
+    private ToolReply copyStructure(JsonObject args,boolean owner,Turn turn) {
+        if(!owner || turn.event())return error("COPY_OWNER_REQUIRED: Current owner authorization from an authenticated player request is required.");
+        CopySpec spec=CopySpec.parse(args);World world=Bukkit.getWorld(spec.world());
+        if(world==null)throw new WorldRefusal("COPY_WORLD_UNAVAILABLE","Copy requires an already loaded world.");
+        List<CopyPlacement> placements=new ArrayList<>();Set<ConnectedBlocks.BlockPos> sourcePositions=new HashSet<>();int protectedSource=0,airSource=0;
+        // Both complete volumes, including air/tile omissions, are validated before the first mutation.
+        for(CopySpec.Cell cell:spec.cells()){
+            checkLocation(world,cell.sourceX(),cell.sourceY(),cell.sourceZ());
+            checkLocation(world,cell.destinationX(),cell.destinationY(),cell.destinationZ());
+            Block source=world.getBlockAt(cell.sourceX(),cell.sourceY(),cell.sourceZ());
+            Block destination=world.getBlockAt(cell.destinationX(),cell.destinationY(),cell.destinationZ());
+            sourcePositions.add(new ConnectedBlocks.BlockPos(cell.sourceX(),cell.sourceY(),cell.sourceZ()));
+            if(!replaceable(destination))throw new WorldRefusal("COPY_OBSTRUCTION","Destination "+cell.destinationX()+","+cell.destinationY()+","+cell.destinationZ()+" contains protected "+destination.getType()+"; no blocks placed.");
+            org.bukkit.block.data.BlockData data=source.getBlockData();
+            if(source.getState() instanceof TileState || source.getState() instanceof Container){protectedSource++;continue;}
+            if(source.getType().isAir()){airSource++;continue;}
+            if(source.isLiquid() || !BuildSpec.safeMaterial(source.getType().name())
+                || (data instanceof org.bukkit.block.data.Waterlogged wet && wet.isWaterlogged()))
+                throw new WorldRefusal("COPY_HAZARD","Source contains a hazardous or fluid-bearing block at "+cell.sourceX()+","+cell.sourceY()+","+cell.sourceZ()+"; no blocks placed.");
+            placements.add(new CopyPlacement(new ConnectedBlocks.BlockPos(cell.destinationX(),cell.destinationY(),cell.destinationZ()),data.clone()));
+        }
+        if(!livingIn(world,new BoundingBox(spec.destinationX(),spec.destinationY(),spec.destinationZ(),
+            spec.destinationX()+spec.width(),spec.destinationY()+spec.height(),spec.destinationZ()+spec.depth())).isEmpty())
+            throw new WorldRefusal("COPY_ENTITY_OCCUPIED","A living entity occupies the complete destination volume; no blocks placed.");
+        int placed=0;List<ConnectedBlocks.BlockPos> changed=new ArrayList<>();
+        try{
+            for(CopyPlacement placement:placements){
+                var pos=placement.destination();world.getBlockAt(pos.x(),pos.y(),pos.z()).setBlockData(placement.data(),false);placed++;changed.add(pos);
+            }
+        }catch(RuntimeException failure){
+            return error("Copy stopped after "+placed+" actual placements in "+spec.world()+" at "+spec.destinationX()+","+spec.destinationY()+","+spec.destinationZ()+". Inspect before any retry; never replay blindly.");
+        }
+        String connections=refreshConnections(world,changed,sourcePositions);
+        JsonObject receipt=new JsonObject();receipt.addProperty("world",spec.world());receipt.addProperty("placed_blocks",placed);
+        receipt.addProperty("skipped_source_tiles",protectedSource);receipt.addProperty("skipped_source_air",airSource);receipt.addProperty("inspected_cells_per_volume",spec.volume());
+        receipt.add("source_origin",JsonParser.parseString("["+spec.x()+","+spec.y()+","+spec.z()+"]"));
+        receipt.add("destination_origin",JsonParser.parseString("["+spec.destinationX()+","+spec.destinationY()+","+spec.destinationZ()+"]"));
+        receipt.add("dimensions",JsonParser.parseString("["+spec.width()+","+spec.height()+","+spec.depth()+"]"));
+        receipt.addProperty("note","Source preserved; non-air safe block data copied without physics or inventories."+connections);
+        return ok(receipt.toString());
+    }
+    private static String refreshConnections(World world,Collection<ConnectedBlocks.BlockPos> changed,Set<ConnectedBlocks.BlockPos> protectedCells){
+        try{ConnectedBlocks.refresh(world,changed,protectedCells);return "";}
+        catch(RuntimeException unavailable){return ". Placements completed but connection refresh was incomplete; inspect joins without replaying placements";}
     }
     private static Player target(JsonObject a, Player actor, boolean owner) {
         if(!a.has("player") || string(a,"player").equals(actor.getName())) return actor;

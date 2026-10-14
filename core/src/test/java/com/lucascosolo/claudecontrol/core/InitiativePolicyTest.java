@@ -59,6 +59,19 @@ class InitiativePolicyTest {
             refused("companion", json);
         }
     }
+    @Test void selfCosmeticAppearanceDoesNotGrantOtherEntityOrHostPowers() {
+        allowed("companion", "{\"action\":\"appearance\",\"preset\":\"hatter\"}");
+        allowed("companion", "{\"action\":\"appearance\",\"account\":\"TownOwner\",\"preset\":\"explorer\"}");
+        allowed("companion", "{\"action\":\"appearance\",\"account\":\"\"}");
+        refused("companion", "{\"action\":\"appearance\",\"account\":\"https://example.invalid/skin\"}");
+        for(String extra:List.of("url","texture","entity_id","player","command")) {
+            JsonObject input=args("{\"action\":\"appearance\",\"preset\":\"hatter\"}");input.addProperty(extra,"untrusted");
+            assertThrows(IllegalArgumentException.class,()->InitiativePolicy.require("companion",input),extra);
+        }
+        refused("entity_commands", "{\"commands\":[\"summon cow ~ ~ ~\"]}");
+        refused("run_commands", "{\"commands\":[\"summon cow ~ ~ ~\"]}");
+        for(String action:List.of("summon","dismiss","stay"))refused("companion","{\"action\":\""+action+"\"}");
+    }
     @Test void allowsDurableNotesAndRefusesArchivalOrMalformedFields() {
         allowed("memory", "{\"action\":\"list\"}");
         allowed("memory", "{\"action\":\"read\",\"name\":\"town.md\"}");

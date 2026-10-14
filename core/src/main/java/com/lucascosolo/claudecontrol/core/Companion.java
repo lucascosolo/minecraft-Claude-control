@@ -21,6 +21,11 @@ public final class Companion {
     private final Object identityLock=new Object();
     private final CompanionWater water;
     private volatile UUID knownId;
+    private volatile AppearanceSpec appearance=AppearanceSpec.defaults();
+    private AppearanceSpec savedAppearance;
+    private long lastExpression=System.currentTimeMillis(),lastCuriosity=System.currentTimeMillis();
+    private UUID observedFriend;
+    private Location observedFriendPosition;
     private record BodyPose(UUID bodyId,UUID worldId,String world,double x,double y,double z) {
         JsonObject json() {
             JsonObject p=new JsonObject();p.addProperty("body_uuid",bodyId.toString());
@@ -62,6 +67,8 @@ public final class Companion {
     public Companion(ClaudeRuntime plugin) throws Exception {
         this.plugin=plugin;tag=new NamespacedKey(plugin.host(),"claude_companion");
         registry=new MemoryStore(plugin.getDataFolder().toPath().resolve("companion"));
+        String cosmetics=registry.read("appearance.json").trim();
+        if(!cosmetics.isEmpty()){appearance=AppearanceSpec.parse(JsonParser.parseString(cosmetics).getAsJsonObject(),appearance);savedAppearance=appearance;}
         String saved=registry.read("body-uuid.txt").trim();if(!saved.isEmpty())knownId=UUID.fromString(saved);
         String pose=registry.read("body-location.json").trim();
         if(!pose.isEmpty()) {
@@ -91,6 +98,8 @@ public final class Companion {
                 registry.write("body-location.json",pose.json().toString());savedPose=pose;
             }
             water.persistIdentity();
+            AppearanceSpec cosmetics=appearance;
+            if(!cosmetics.equals(savedAppearance)){registry.write("appearance.json",cosmetics.json().toString());savedAppearance=cosmetics;}
         }
     }
     private void rememberPose() {
@@ -116,6 +125,7 @@ public final class Companion {
         entity.setDescription(Component.text("Your Minecraft companion"));entity.setInvulnerable(true);
         entity.setCanPickupItems(false);entity.setPersistent(true);entity.setRemoveWhenFarAway(false);
         entity.setAI(false);entity.setGravity(false);entity.setCollidable(false);entity.setImmovable(true);
+        CompanionAppearance.apply(entity,appearance);
     }
     public ToolReply action(JsonObject input,Turn turn) {
         Player actor=plugin.authorizedActor(turn);String action=input.get("action").getAsString();
@@ -148,6 +158,15 @@ public final class Companion {
         if(!body.getWorld().equals(actor.getWorld()) || body.getLocation().distanceSquared(actor.getLocation())>32*32)
             return new ToolReply("Control Claude while nearby in the same world",true);
         switch(action) {
+            case "appearance" -> {
+                if(!plugin.currentOwner(turn))return new ToolReply("Only a currently authorized owner may change the companion's appearance",true);
+                if(jumping || step<route.size() || terrainStep<terrain.size() || water.aboard(body))
+                    return new ToolReply("Wait for the body to finish moving before changing its appearance",true);
+                AppearanceSpec next=AppearanceSpec.parse(input,appearance);
+                CompanionAppearance.apply(body,next);appearance=next;plugin.queueCompanionPersistence();
+                return new ToolReply("Appearance applied to the existing body: "+next.preset()+" outfit; "+
+                    (next.account().isEmpty()?"native default skin":"skin requested for "+next.account()+"; clients resolve the account, so unknown accounts may keep a default skin"),false);
+            }
             case "dismiss" -> {
                 stop("Body dismissed; completed physical placements remain");
                 synchronized(identityLock) {
@@ -341,24 +360,38 @@ public final class Companion {
         if(jumping)return;
         if(water.follow(body,nearest)) {route=List.of();terrain=List.of();step=0;terrainStep=0;outcome="Traveling with you in Claude's own boat";return;}
         long now=System.currentTimeMillis();
+        Location friendPosition=nearest.getLocation();
+        boolean playerMoving=observedFriendPosition==null || !nearest.getUniqueId().equals(observedFriend)
+            || !friendPosition.getWorld().equals(observedFriendPosition.getWorld())
+            || friendPosition.distanceSquared(observedFriendPosition)>0.09 || nearest.isSprinting() || nearest.isFlying();
+        observedFriend=nearest.getUniqueId();observedFriendPosition=friendPosition.clone();
         if(wanderUntil>now) {
-            if(terrainStep<terrain.size())return;
-            if(presenceTicks%40!=0)return;
-            var random=java.util.concurrent.ThreadLocalRandom.current();Location anchor=nearest.getLocation();
-            for(int attempt=0;attempt<4;attempt++) {
-                int x=anchor.getBlockX()+random.nextInt(-6,7),z=anchor.getBlockZ()+random.nextInt(-6,7);
-                for(int dy:new int[]{0,1,-1,2,-2}) {
-                    int y=anchor.getBlockY()+dy;
-                    if(safeCell(body.getWorld(),x,y,z) && planTerrain(x,y,z)) {outcome="Exploring nearby; local plan active";return;}
+            // Walking friends set the pace: drop curiosity and resume ordinary following.
+            if(playerMoving){wanderUntil=0;terrain=List.of();terrainStep=0;}
+            else {
+                if(terrainStep<terrain.size())return;
+                if(presenceTicks%40!=0)return;
+                var random=java.util.concurrent.ThreadLocalRandom.current();Location anchor=nearest.getLocation();
+                for(int attempt=0;attempt<4;attempt++) {
+                    int x=anchor.getBlockX()+random.nextInt(-6,7),z=anchor.getBlockZ()+random.nextInt(-6,7);
+                    for(int dy:new int[]{0,1,-1,2,-2}) {
+                        int y=anchor.getBlockY()+dy;
+                        if(safeCell(body.getWorld(),x,y,z) && planTerrain(x,y,z)) {outcome="Exploring nearby; local plan active";return;}
+                    }
                 }
+                look(nearest.getEyeLocation());return;
             }
-            look(nearest.getEyeLocation());return;
         }
         wanderUntil=0;
         if(distance<=9) {
             route=List.of();step=0;terrain=List.of();terrainStep=0;body.setVelocity(new Vector());body.setImmovable(true);
-            if(presenceTicks%200==0){wanderUntil=now+10_000;return;}
-            look(nearest.getEyeLocation());outcome="Keeping you company";return;
+            look(nearest.getEyeLocation());
+            try {localExpression(nearest,distance,playerMoving,now);}
+            catch(RuntimeException unavailable){ /* Optional expression cannot stop companionship. */ }
+            if(!playerMoving && now>=lastCuriosity && now-lastCuriosity>=45_000) {
+                lastCuriosity=now;wanderUntil=now+8_000;return;
+            }
+            outcome="Keeping you company";return;
         }
         Location target=nearest.getLocation();
         for(int[] delta:new int[][]{{2,0},{-2,0},{0,2},{0,-2}})
@@ -417,6 +450,7 @@ public final class Companion {
         JsonObject state=new JsonObject();boolean loaded=body!=null && body.isValid() && !body.isDead();
         state.addProperty("loaded",loaded);state.addProperty("invited",knownId!=null);
         state.addProperty("keeps_company",keepCompany);state.addProperty("outcome",outcome);
+        state.add("appearance",appearance.json());
         long now=System.currentTimeMillis();
         String mode=!loaded?(knownId==null?"absent":"unloaded"):plugin.isPaused()?"paused":water.aboard(body)?"boating":job!=null?"building":
             designUntil>now?"designing":listeningUntil>now?"listening":wanderUntil>now?"exploring":
@@ -483,7 +517,7 @@ public final class Companion {
             finishJob("Interrupted by a new request; completed placements preserved",true);halt("Listening to your request");
         } else if(job==null && (following || wanderUntil>0 || terrainStep<terrain.size()))halt("Listening to your request");
     }
-    public void requestFinished() {listeningUntil=0;}
+    public void requestFinished() {listeningUntil=0;lastCuriosity=System.currentTimeMillis();}
     private void walkStep() {
         Location here=body.getLocation();var target=route.get(step);
         if(here.getBlockY()!=level || !safeCell(body.getWorld(),target.x(),level,target.z()))throw new IllegalStateException("Route changed");
@@ -549,6 +583,7 @@ public final class Companion {
         body.getEquipment().setItemInMainHand(new ItemStack(job.materials.get(op)));
         look(new Location(body.getWorld(),x+0.5,y+0.5,z+0.5));body.swingMainHand();
         block.setType(job.materials.get(op),false);job.placed++;job.index++;
+        ConnectedBlocks.refresh(block);
     }
     private void finishJob(String reason,boolean error) {
         if(job==null)return;BuildJob current=job;job=null;
@@ -573,14 +608,35 @@ public final class Companion {
         if(Math.hypot(x-eyes.getX(),z-eyes.getZ())<0.2)return;
         body.lookAt(x,eyes.getY(),z,LookAnchor.EYES);
     }
+    private void localExpression(Player friend,double distance,boolean playerMoving,long now) {
+        if(!CompanionWhimsy.allowed(keepCompany,plugin.isPaused(),job!=null || recallPending
+            || now<Math.max(listeningUntil,designUntil),jumping || step<route.size() || terrainStep<terrain.size(),
+            playerMoving,distance,now,lastExpression) || water.aboard(body) || water.foreignVehicle(body))return;
+        Location p=body.getLocation();
+        if(!safeCell(body.getWorld(),p.getBlockX(),p.getBlockY(),p.getBlockZ()))return;
+        lastExpression=now;
+        int choice=java.util.concurrent.ThreadLocalRandom.current().nextInt(4);
+        if(choice==0) {
+            // A brief sideways glance at eye height; ordinary following restores attention next tick.
+            body.lookAt(p.getX()+2,body.getEyeLocation().getY(),p.getZ()-2,LookAnchor.EYES);
+        } else {
+            look(friend.getEyeLocation());body.swingMainHand();
+            if(choice>=2)friend.spawnParticle(Particle.END_ROD,body.getEyeLocation(),5,0.2,0.15,0.2,0.005);
+            if(choice==3)friend.playSound(p,"minecraft:block.amethyst_block.chime",SoundCategory.NEUTRAL,0.12f,1.35f);
+        }
+    }
     /** Optional expression for powerful tools; never spawns, changes jobs or diverts a walk. */
     public void gesture(Turn turn) {
         try {
             Player actor=plugin.authorizedActor(turn);
-            if(body==null || !body.isValid() || job!=null || step<route.size() || terrainStep<terrain.size()
+            long now=System.currentTimeMillis();
+            if(body==null || !body.isValid() || !keepCompany || plugin.isPaused() || jumping
+                || now<Math.max(listeningUntil,designUntil) || now<lastExpression || now-lastExpression<25_000
+                || job!=null || step<route.size() || terrainStep<terrain.size()
                 || !body.getWorld().equals(actor.getWorld()) || body.getLocation().distanceSquared(actor.getLocation())>32*32)return;
             Location p=body.getLocation();
             if(!body.getWorld().isChunkLoaded(p.getBlockX()>>4,p.getBlockZ()>>4))return;
+            lastExpression=now;
             look(actor.getEyeLocation());body.swingMainHand();
             body.getWorld().spawnParticle(Particle.END_ROD,body.getEyeLocation(),6,0.15,0.15,0.15,0.01);
         } catch(RuntimeException ignored) { /* The requested effect does not depend on the optional gesture. */ }

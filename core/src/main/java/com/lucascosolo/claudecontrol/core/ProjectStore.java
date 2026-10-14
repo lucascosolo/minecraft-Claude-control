@@ -56,12 +56,15 @@ public final class ProjectStore {
             for(JsonElement element:steps){
                 JsonObject step=element.getAsJsonObject();ExperienceSpec.keys(step,Set.of("id","description","tool","args"));if(!ids.add(identifier(step,"id")))throw new IllegalArgumentException("Duplicate step identity");
                 ExperienceSpec.text(step,"description",1024,true);String tool=ExperienceSpec.text(step,"tool",32,true);
-                if(!Set.of("observe_world","survey_area","check_build","build","build_in_character","experience","memory").contains(tool))throw new IllegalArgumentException("Unapproved project step");
+                if(!Set.of("observe_world","survey_area","check_build","build","build_in_character","copy_structure","experience","memory").contains(tool))throw new IllegalArgumentException("Unapproved project step");
                 if(!step.has("args") || !step.get("args").isJsonObject())throw new IllegalArgumentException("Step arguments required");JsonObject args=step.getAsJsonObject("args");
                 if(Set.of("check_build","build","build_in_character").contains(tool)){
                     ExperienceSpec.keys(args,Set.of("world","x","y","z","width","height","depth","replace_existing","operations"));BuildSpec plan=BuildSpec.parse(args);
                     if(plan.replaceExisting() || (tool.equals("build_in_character") && plan.blocks().size()>16))throw new IllegalArgumentException("Unsafe project build");
                     if(!tool.equals("check_build"))placements+=plan.blocks().size();if(placements>32768)throw new IllegalArgumentException("Project placement budget exceeded");
+                }else if(tool.equals("copy_structure")){
+                    CopySpec copy=CopySpec.parse(args);placements+=copy.volume();
+                    if(placements>32768)throw new IllegalArgumentException("Project placement budget exceeded");
                 }else if(tool.equals("experience")){
                     ExperienceSpec.keys(args,Set.of("action","id","definition"));String action=ExperienceSpec.text(args,"action",16,true);
                     if(!Set.of("list","read","save","reload","enable","disable").contains(action))throw new IllegalArgumentException("Unsafe experience step");

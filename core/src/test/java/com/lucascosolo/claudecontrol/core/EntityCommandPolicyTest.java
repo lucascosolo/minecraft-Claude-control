@@ -87,6 +87,23 @@ class EntityCommandPolicyTest {
             "summon cow ~ ~ ~\u0000", "summon cow ~ ~ ~ {CustomName:'\\u0063ommand'}", "", " ", "x".repeat(4097)))refused(command);
         assertThrows(IllegalArgumentException.class,()->EntityCommandPolicy.require(null,Set.of()));
     }
+    @Test void spawningExecuteForksRequireExplicitBoundedSourceProducts() {
+        allowed("execute as @e[type=cow,limit=4] at @e[type=cow,limit=4] run summon cow ~ ~ ~");
+        refused("execute as @e[type=cow,limit=4] run execute as @e[type=cow,limit=5] run summon cow ~ ~ ~");
+        refused("execute at @e[type=cow] run summon cow ~ ~ ~");
+        refused("execute as @a run summon cow ~ ~ ~");
+        refused("execute as @e[limit=17] run summon cow ~ ~ ~");
+        allowed("execute as @s at @p run summon cow ~ ~ ~");
+        allowed("execute as @e[type=cow] run tag @s add town_friend");
+    }
+    @Test void explosiveAndFatalEntityDataCannotBypassPayloadChecks() {
+        for(String payload:List.of("{ExplosionRadius:8b}","{powered:1b}","{powered:true}","{Health:'0'}","{Health:NaNf}","{Health:-1f}")) {
+            refused("summon creeper ~ ~ ~ "+payload);
+            refused("data merge entity @e[type=creeper,limit=1] "+payload);
+        }
+        allowed("summon creeper ~ ~ ~ {NoAI:1b,powered:0b}");
+        allowed("summon creeper ~ ~ ~ {NoAI:1b,powered:false}");
+    }
     @Test void refusalDiagnosticsDoNotEchoPrivateCommandPayloads() {
         String privatePayload="private-command-payload-canary";
         IllegalArgumentException error=assertThrows(IllegalArgumentException.class,
