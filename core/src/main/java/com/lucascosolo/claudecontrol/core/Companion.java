@@ -1,6 +1,7 @@
 package com.lucascosolo.claudecontrol.core;
 
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.kyori.adventure.text.Component;
 import org.bukkit.*;
 import org.bukkit.entity.*;
@@ -18,7 +19,20 @@ public final class Companion {
     private final NamespacedKey tag;
     private final MemoryStore registry;
     private final Object identityLock=new Object();
+    private final CompanionWater water;
     private volatile UUID knownId;
+    private record BodyPose(UUID bodyId,UUID worldId,String world,double x,double y,double z) {
+        JsonObject json() {
+            JsonObject p=new JsonObject();p.addProperty("body_uuid",bodyId.toString());
+            if(worldId!=null)p.addProperty("world_uuid",worldId.toString());
+            p.addProperty("world",world);p.addProperty("x",x);p.addProperty("y",y);p.addProperty("z",z);return p;
+        }
+    }
+    private volatile BodyPose lastPose;
+    private BodyPose savedPose;
+    private long recallGeneration;
+    private boolean recallPending;
+    private long lastAutomaticRecall;
     private Mannequin body;
     private BukkitTask timer;
     private Turn controller;
@@ -49,21 +63,50 @@ public final class Companion {
         this.plugin=plugin;tag=new NamespacedKey(plugin.host(),"claude_companion");
         registry=new MemoryStore(plugin.getDataFolder().toPath().resolve("companion"));
         String saved=registry.read("body-uuid.txt").trim();if(!saved.isEmpty())knownId=UUID.fromString(saved);
+        String pose=registry.read("body-location.json").trim();
+        if(!pose.isEmpty()) {
+            JsonObject p=JsonParser.parseString(pose).getAsJsonObject();
+            UUID recordedWorld=p.has("world_uuid") && !p.get("world_uuid").isJsonNull()?UUID.fromString(p.get("world_uuid").getAsString()):null;
+            BodyPose parsed=new BodyPose(UUID.fromString(p.get("body_uuid").getAsString()),recordedWorld,
+                p.get("world").getAsString(),p.get("x").getAsDouble(),p.get("y").getAsDouble(),p.get("z").getAsDouble());
+            if(!Double.isFinite(parsed.x) || !Double.isFinite(parsed.y) || !Double.isFinite(parsed.z)
+                || Math.abs(parsed.x)>29_999_984 || Math.abs(parsed.z)>29_999_984)throw new IllegalArgumentException("Invalid companion position record");
+            if(parsed.bodyId.equals(knownId)) {
+                lastPose=parsed;savedPose=parsed;
+                if(recordedWorld==null) {
+                    World loaded=Bukkit.getWorld(parsed.world);
+                    if(loaded!=null)lastPose=new BodyPose(parsed.bodyId,loaded.getUID(),parsed.world,parsed.x,parsed.y,parsed.z);
+                }
+            }
+        }
+        water=new CompanionWater(plugin,registry,identityLock);
         adopt();
         timer=Bukkit.getScheduler().runTaskTimer(plugin.host(),this::tick,1,1);
     }
     public void persistIdentity() throws Exception {
         synchronized(identityLock) {
             UUID id=knownId;if(id!=null && !registry.read("body-uuid.txt").trim().equals(id.toString()))registry.write("body-uuid.txt",id.toString());
+            BodyPose pose=lastPose;
+            if(pose!=null && pose.bodyId.equals(id) && !pose.equals(savedPose)) {
+                registry.write("body-location.json",pose.json().toString());savedPose=pose;
+            }
+            water.persistIdentity();
         }
     }
+    private void rememberPose() {
+        if(body==null || knownId==null || !body.getUniqueId().equals(knownId))return;
+        try {
+            Location p=body.getLocation();lastPose=new BodyPose(knownId,p.getWorld().getUID(),p.getWorld().getName(),p.getX(),p.getY(),p.getZ());
+        }catch(RuntimeException unavailable){ /* Retain the last immutable loaded position. */ }
+    }
     private void adopt() {
+        rememberPose();
         if(body!=null && body.isValid() && !body.isDead())return;
         body=null;
         for(World world:Bukkit.getWorlds()) for(Entity entity:world.getEntities()) {
             if(entity instanceof Mannequin candidate && candidate.getPersistentDataContainer().has(tag,PersistentDataType.BYTE)) {
                 if(knownId==null || candidate.getUniqueId().equals(knownId)) {
-                    body=candidate;knownId=candidate.getUniqueId();configure(candidate);outcome="Standing by";return;
+                    body=candidate;knownId=candidate.getUniqueId();configure(candidate);rememberPose();outcome="Standing by";return;
                 }
             }
         }
@@ -84,6 +127,12 @@ public final class Companion {
         if(job!=null && controller!=null && !controller.actorId().equals(turn.actorId()) && !plugin.currentOwner(turn))
             return new ToolReply("Only the initiating player or an owner can stop this building job",true);
         adopt();
+        if(action.equals("recall"))return recall(turn);
+        if((recallPending || body==null || !body.isValid()) && Set.of("stay","dismiss").contains(action) && plugin.currentOwner(turn)) {
+            keepCompany=false;stop("Existing body recovery stopped by owner");
+            if(action.equals("stay"))return new ToolReply("Claude will stay; pending recovery was canceled",false);
+            if(body==null || !body.isValid())return new ToolReply("Pending recovery was canceled; the unloaded body remains registered and was not removed",true);
+        }
         if(action.equals("summon")) {
             if(body!=null)return new ToolReply("Claude already has a loaded body: "+status(),false);
             // A saved or other tagged body may be unloaded. Refuse another body instead of loading chunks.
@@ -92,7 +141,7 @@ public final class Companion {
             if(spot==null)return new ToolReply("No safe, clear, loaded standing spot beside the player",true);
             body=actor.getWorld().spawn(spot,Mannequin.class,entity->{
                 entity.getPersistentDataContainer().set(tag,PersistentDataType.BYTE,(byte)1);configure(entity);
-            });knownId=body.getUniqueId();keepCompany=true;outcome="Summoned; keeping you company";
+            });knownId=body.getUniqueId();rememberPose();keepCompany=true;outcome="Summoned; keeping you company";
             return new ToolReply("Claude appeared beside you. "+status(),false);
         }
         if(body==null || !body.isValid())return new ToolReply("Claude's body is not loaded; summon first or visit its existing area",true);
@@ -102,15 +151,22 @@ public final class Companion {
             case "dismiss" -> {
                 stop("Body dismissed; completed physical placements remain");
                 synchronized(identityLock) {
-                    try {registry.write("body-uuid.txt","");}
+                    try {water.dismiss(body);registry.write("body-uuid.txt","");}
                     catch(Exception failure) {return new ToolReply("Could not preserve the body identity change; Claude's body was kept",true);}
-                    body.remove();body=null;knownId=null;outcome="Dismissed";
+                    body.remove();body=null;knownId=null;lastPose=null;savedPose=null;outcome="Dismissed";
                 }
                 return new ToolReply("Claude's body was dismissed. Memory and builds are preserved; summon again whenever you like",false);
             }
             case "stay" -> {keepCompany=false;finishJob("Stopped by request",true);halt("Staying here");}
             case "wave" -> {halt("Giving you my attention");listeningUntil=System.currentTimeMillis()+3000;look(actor.getEyeLocation());body.swingMainHand();outcome="Waved";}
             case "follow" -> {listeningUntil=0;keepCompany=true;halt("Keeping you company");controller=turn;following=true;deadline=Long.MAX_VALUE;}
+            case "boat" -> {
+                halt("Preparing owned boat travel");
+                try {
+                    if(!water.start(body))return new ToolReply("No available owned boat and clear loaded surface water beside Claude",true);
+                }catch(Exception failed){return new ToolReply("Owned boat identity could not be preserved; no further boat travel started",true);}
+                keepCompany=true;controller=turn;following=true;deadline=Long.MAX_VALUE;
+            }
             case "wander" -> {
                 int duration=burstDuration(input);
                 listeningUntil=0;halt("Exploring nearby for "+duration+" seconds");keepCompany=true;
@@ -130,6 +186,62 @@ public final class Companion {
             default -> {return new ToolReply("Unknown companion action",true);}
         }
         return new ToolReply(status(),false);
+    }
+    private ToolReply recall(Turn turn) {
+        return recall(turn,false);
+    }
+    private ToolReply recall(Turn turn,boolean automatic) {
+        Player actor=plugin.authorizedActor(turn);
+        if(!plugin.currentOwner(turn))return new ToolReply("Only a currently authorized owner may recall the existing body",true);
+        if(knownId==null)return new ToolReply("There is no registered body to recall; summon first",true);
+        if(recallPending)return new ToolReply("Existing body recovery is already pending",false);
+        if(body!=null && body.isValid()) {
+            catchUp(actor);return new ToolReply(status(),false);
+        }
+        BodyPose pose=lastPose;
+        if(pose==null || !pose.bodyId.equals(knownId))return new ToolReply("The existing body has no verified saved position; preserve its UUID and restore its position record first",true);
+        World source=pose.worldId==null?Bukkit.getWorld(pose.world):Bukkit.getWorld(pose.worldId);
+        if(source==null || !source.getName().equals(pose.world) || pose.y<source.getMinHeight() || pose.y>=source.getMaxHeight())
+            return new ToolReply("Recorded body world or position is unavailable; no chunk was loaded",true);
+        halt("Recalling the existing body from its recorded chunk");
+        recallPending=true;
+        long generation=recallGeneration;UUID expected=knownId;
+        int chunkX=((int)Math.floor(pose.x))>>4,chunkZ=((int)Math.floor(pose.z))>>4;
+        CompletableFuture<Chunk> loading;
+        try {loading=source.getChunkAtAsync(chunkX,chunkZ,false).orTimeout(10,java.util.concurrent.TimeUnit.SECONDS);}
+        catch(RuntimeException unavailable){recallPending=false;return new ToolReply("Recorded existing chunk could not be requested safely",true);}
+        loading.whenComplete((chunk,failure)->{
+            if(!plugin.host().isEnabled())return;
+            Bukkit.getScheduler().runTask(plugin.host(),()->{
+                if(generation!=recallGeneration || !expected.equals(knownId))return;
+                boolean ticket=false;
+                try {
+                    Player owner=plugin.authorizedActor(turn);
+                    if(plugin.isPaused() || !plugin.currentOwner(turn))throw new IllegalStateException("Recall authorization changed");
+                    if(failure!=null || chunk==null || !chunk.isLoaded())throw new IllegalStateException("Recorded existing chunk unavailable");
+                    ticket=chunk.addPluginChunkTicket(plugin.host());
+                    Mannequin found=null;
+                    for(Entity entity:chunk.getEntities())
+                        if(entity.getUniqueId().equals(expected) && entity instanceof Mannequin candidate
+                            && candidate.getPersistentDataContainer().has(tag,PersistentDataType.BYTE))found=candidate;
+                    if(found==null || !found.isValid() || found.isDead())throw new IllegalStateException("Exact registered body not present");
+                    for(World world:Bukkit.getWorlds())for(Entity entity:world.getEntities())
+                        if(entity instanceof Mannequin && entity.getPersistentDataContainer().has(tag,PersistentDataType.BYTE)
+                            && !entity.getUniqueId().equals(expected))throw new IllegalStateException("Another tagged body is loaded");
+                    if(!plugin.currentOwner(turn) || generation!=recallGeneration || water.foreignVehicle(found))
+                        throw new IllegalStateException("Recall no longer safe");
+                    body=found;configure(body);catchUp(owner);rememberPose();plugin.queueCompanionPersistence();
+                    if(!automatic)owner.sendMessage(plugin.settings().chatPrefix()+status());
+                }catch(Exception refused) {
+                    Player owner=Bukkit.getPlayer(turn.actorId());
+                    if(!automatic && owner!=null)owner.sendMessage(plugin.settings().chatPrefix()+"Recall stopped safely: verify the saved body position and clear loaded ground or water beside you.");
+                }finally {
+                    if(ticket && chunk!=null)chunk.removePluginChunkTicket(plugin.host());
+                    if(generation==recallGeneration)recallPending=false;
+                }
+            });
+        });
+        return new ToolReply("Recall queued for the one recorded existing chunk; no replacement body or new terrain will be created",false);
     }
     /** Read-only batch admission for managed experiences; never adopts or spawns. */
     void preflightExperience(JsonObject input,Turn turn) {
@@ -174,14 +286,17 @@ public final class Companion {
         return !route.isEmpty();
     }
     private void tick() {
-        if(plugin.isPaused())return;
+        if(++presenceTicks%20==0){rememberPose();plugin.queueCompanionPersistence();}
+        if(plugin.isPaused()){water.park(body);return;}
         try {
-            if(++presenceTicks%20==0 && job==null && (controller==null || following))keepNearby();
+            if(presenceTicks%20==0 && job==null && (controller==null || following))keepNearby();
             if(controller==null)return;
             Player actor=plugin.authorizedActor(controller);
             if(plugin.isPaused() || body==null || !body.isValid() || body.isDead()
                 || !body.getWorld().equals(actor.getWorld()) || body.getLocation().distanceSquared(actor.getLocation())>32*32
                 || System.currentTimeMillis()>deadline)throw new IllegalStateException("Actor, body or time limit unavailable");
+            if(water.foreignVehicle(body))throw new IllegalStateException("Body is in an unrelated vehicle");
+            if(water.aboard(body)){water.tick(body);return;}
             Location here=body.getLocation();
             if(!jumping && !safeCell(body.getWorld(),here.getBlockX(),here.getBlockY(),here.getBlockZ()))throw new IllegalStateException("Unsafe or unloaded standing cell");
             if(terrainStep<terrain.size()){walkTerrainStep();return;}
@@ -192,10 +307,13 @@ public final class Companion {
         } catch(Exception e) {finishJob("Stopped: actor permission, safe route, body or time limit changed",true);halt("Stopped safely; request a new route");}
     }
     /** Local companionship, independent of paid conversations. Never loads chunks or changes a player's position. */
-    private void keepNearby() {
+    private void keepNearby() throws Exception {
         if(!keepCompany || System.currentTimeMillis()<Math.max(listeningUntil,designUntil))return;
+        if(recallPending)return;
         adopt();
-        if(body==null || !body.isValid() || body.isDead())return;
+        if(body==null || !body.isValid() || body.isDead()) {
+            recoverExistingBody();return;
+        }
         Location here=body.getLocation();Player nearest=null;double distance=Double.MAX_VALUE;
         for(Player candidate:body.getWorld().getPlayers()) {
             if(!candidate.isOnline() || !candidate.hasPermission("claudecontrol.ask") || candidate.getGameMode()==GameMode.SPECTATOR)continue;
@@ -217,6 +335,7 @@ public final class Companion {
         plugin.authorizedActor(nearby);
         controller=nearby;following=true;deadline=Long.MAX_VALUE;
         if(jumping)return;
+        if(water.follow(body,nearest)) {route=List.of();terrain=List.of();step=0;terrainStep=0;outcome="Traveling with you in Claude's own boat";return;}
         long now=System.currentTimeMillis();
         if(wanderUntil>now) {
             if(terrainStep<terrain.size())return;
@@ -244,17 +363,41 @@ public final class Companion {
         if(CompanionPresence.catchUp(true,distance,false,now,lastCatchUp))catchUp(nearest);
         else {terrain=List.of();terrainStep=0;outcome="Waiting before a safe catch-up";}
     }
+    private void recoverExistingBody() {
+        long now=System.currentTimeMillis();
+        if(!keepCompany || plugin.isPaused() || job!=null || recallPending || knownId==null || lastPose==null
+            || !lastPose.bodyId.equals(knownId) || now<lastAutomaticRecall || now-lastAutomaticRecall<15_000)return;
+        for(Player owner:Bukkit.getOnlinePlayers()) {
+            if(!owner.isOnline() || !owner.hasPermission("claudecontrol.ask") || owner.getGameMode()==GameMode.SPECTATOR)continue;
+            Turn identity=new Turn(owner.getUniqueId(),owner.getName(),true,"Recovering the invited existing companion body",false);
+            if(!plugin.currentOwner(identity))continue;
+            lastAutomaticRecall=now;
+            try {recall(identity,true);}catch(RuntimeException refused){recallPending=false;}
+            return;
+        }
+    }
     private void catchUp(Player friend) {
         Turn identity=new Turn(friend.getUniqueId(),friend.getName(),false,"Keeping friends company",false);
         plugin.authorizedActor(identity);
         Location spot=findSummon(friend);
         halt("Catching up to friends");
         route=List.of();step=0;terrain=List.of();terrainStep=0;body.setVelocity(new Vector());body.setImmovable(true);
+        try {
+            if(water.foreignVehicle(body)){outcome="Waiting; body is aboard an unrelated vehicle";return;}
+            if(spot==null && water.catchUp(body,friend)) {
+                lastCatchUp=System.currentTimeMillis();controller=identity;following=true;deadline=Long.MAX_VALUE;
+                rememberPose();outcome="Caught up in Claude's own boat";return;
+            }
+        }catch(Exception refused){outcome="Waiting; owned boat identity or safe water unavailable";return;}
         if(spot==null){outcome="Waiting for safe ground near you";return;}
-        if(body.teleport(spot)) {
+        boolean moved=false;
+        try {moved=water.aboard(body)?water.land(body,spot):body.teleport(spot);}
+        catch(Exception refused){outcome="Waiting; owned boat identity could not be preserved";return;}
+        if(moved) {
             lastCatchUp=System.currentTimeMillis();controller=identity;following=true;deadline=Long.MAX_VALUE;
             body.getWorld().spawnParticle(Particle.END_ROD,spot.clone().add(0,1,0),8,0.2,0.4,0.2,0.01);
             look(friend.getEyeLocation());outcome="Caught up beside you";
+            rememberPose();
         }
     }
     public boolean readyForPlan() {
@@ -271,10 +414,12 @@ public final class Companion {
         state.addProperty("loaded",loaded);state.addProperty("invited",knownId!=null);
         state.addProperty("keeps_company",keepCompany);state.addProperty("outcome",outcome);
         long now=System.currentTimeMillis();
-        String mode=!loaded?(knownId==null?"absent":"unloaded"):plugin.isPaused()?"paused":job!=null?"building":
+        String mode=!loaded?(knownId==null?"absent":"unloaded"):plugin.isPaused()?"paused":water.aboard(body)?"boating":job!=null?"building":
             designUntil>now?"designing":listeningUntil>now?"listening":wanderUntil>now?"exploring":
             terrainStep<terrain.size() || step<route.size()?"walking":keepCompany?"keeping_company":"staying";
         state.addProperty("mode",mode);
+        state.add("vehicle",water.snapshot(body));
+        if(!loaded && lastPose!=null && lastPose.bodyId.equals(knownId))state.add("last_known_position",lastPose.json());
         state.addProperty("plan_remaining_seconds",Math.max(0,(Math.max(wanderUntil,designUntil)-now)/1000));
         if(loaded) {
             Location p=body.getLocation();state.addProperty("world",body.getWorld().getName());
@@ -408,6 +553,7 @@ public final class Companion {
         if(controller!=null){Player actor=Bukkit.getPlayer(controller.actorId());if(actor!=null)actor.sendMessage(plugin.settings().chatPrefix()+result);}
     }
     private void halt(String reason) {
+        recallGeneration++;recallPending=false;water.park(body);
         boolean settle=jumping;
         if(jumping && jumpStart!=null && body!=null && body.isValid()
             && safeCell(jumpStart.getWorld(),jumpStart.getBlockX(),jumpStart.getBlockY(),jumpStart.getBlockZ()))settle=!body.teleport(jumpStart);

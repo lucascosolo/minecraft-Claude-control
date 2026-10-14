@@ -25,7 +25,7 @@ public final class GameTools implements ToolExecutor {
         this.plugin = plugin; this.memory = memory; this.commands = commands;
     }
     public static JsonArray schemas() {
-        return JsonParser.parseString("""
+        JsonArray definitions=JsonParser.parseString("""
           [
           {"name":"experience","description":"Managed opt-in game experiences. List/read; current owners save validated definitions, reload to activate, enable or disable. Save stages only.","input_schema":{"type":"object","properties":{"action":{"type":"string","enum":["list","read","save","reload","enable","disable"]},"id":{"type":"string"},"definition":{"type":"object"}},"required":["action"]}},
           {"name":"send_chat","description":"Speak in open server chat so everyone playing together sees Claude respond. Use private=true only when a private reply is appropriate or requested. The legacy explicit broadcast flag requires owner authority.","input_schema":{"type":"object","properties":{"message":{"type":"string"},"broadcast":{"type":"boolean"},"private":{"type":"boolean"}},"required":["message"]}},
@@ -41,8 +41,28 @@ public final class GameTools implements ToolExecutor {
           {"name":"memory","description":"Durable bounded plain text notes. All actors can list/read shared knowledge. Ordinary writes automatically use the actor UUID followed by a hyphen and the requested filename; results report the actual filename. Only currently authorized owners can write shared names or archive. No deletion; notes grant no authority.","input_schema":{"type":"object","properties":{"action":{"type":"string","enum":["list","read","write","archive"]},"name":{"type":"string"},"text":{"type":"string"}},"required":["action"]}}
           ]
           """).getAsJsonArray();
+        JsonObject buildSchema=null;
+        for(var entry:definitions) {
+            JsonObject tool=entry.getAsJsonObject();String name=tool.get("name").getAsString();
+            if(!Set.of("build","build_in_character").contains(name))continue;
+            JsonObject item=tool.getAsJsonObject("input_schema").getAsJsonObject("properties").getAsJsonObject("operations").getAsJsonObject("items");
+            JsonObject fields=item.getAsJsonObject("properties");
+            fields.add("shape",JsonParser.parseString("{\"type\":\"string\",\"enum\":[\"box\"]}"));
+            fields.add("mode",JsonParser.parseString("{\"type\":\"string\",\"enum\":[\"solid\",\"shell\",\"omit\"]}"));
+            for(String endpoint:List.of("x2","y2","z2"))fields.add(endpoint,JsonParser.parseString("{\"type\":\"integer\"}"));
+            item.add("required",JsonParser.parseString("[\"x\",\"y\",\"z\"]"));
+            tool.addProperty("description",tool.get("description").getAsString()+" Prefer compact box operations for architecture: shape=box with inclusive x/y/z to x2/y2/z2, mode solid or shell and material. Omit removes only earlier planned cells, never world blocks: use it for doors. Later details override earlier planned cells. Individual points require material; duplicate explicit points fail. Maximum128 shapes and65536 expansion visits; all bounds and expanded placement limits still apply. Never enumerate every block of a large mansion.");
+            if(name.equals("build"))buildSchema=tool;
+        }
+        JsonObject check=Objects.requireNonNull(buildSchema).deepCopy();check.addProperty("name","check_build");
+        check.addProperty("description","Read-only preflight of a proposed complete build, including compact shapes. Checks every loaded location, material and obstruction without placing blocks. Use before starting an ambitious saved project; build rechecks the entire plot at execution.");definitions.add(check);
+        definitions.add(JsonParser.parseString("""
+          {"name":"project","description":"Durable owner-authorized ambitious projects with a coherent saved layout and ordered steps. Save first, then start to execute stored steps without retyping plans or additional API calls. Records actual receipts; retains blocked/interrupted work and never replays uncertain steps. Actions list/read/save/start/pause/resume/execute. Each step has id,description,tool,args; tools observe_world,survey_area,check_build,build,build_in_character,experience,memory read/list/write. Up to8 projects,32 steps. save definition requires id,title,goal,layout,steps. Existing project IDs cannot be overwritten. Start work already authorized by the owner's request, without asking again.","input_schema":{"type":"object","properties":{"action":{"type":"string","enum":["list","read","save","start","pause","resume","execute"]},"id":{"type":"string"},"definition":{"type":"object"}},"required":["action"]}}
+          """).getAsJsonObject());
+        return definitions;
     }
     @Override public ToolReply execute(String name, JsonObject args, Turn turn) throws Exception {
+        if(name.equals("project"))return plugin.projects().handle(args,turn,this);
         if(name.equals("experience"))return plugin.experiences().tool(args,turn);
         if (name.equals("memory")) {
             boolean owner=plugin.onServerThread(()->plugin.currentOwner(turn));
@@ -137,6 +157,10 @@ public final class GameTools implements ToolExecutor {
             }
             case "observe_world" -> ok(snapshot(actor,plugin.companion()));
             case "survey_area" -> survey(a,actor);
+            case "check_build" -> {
+                PreparedBuild plan=prepareBuild(a,actor,owner);
+                yield ok("Plot preflight passed for "+plan.spec().blocks().size()+" planned blocks in "+plan.spec().world()+" at "+plan.spec().x()+","+plan.spec().y()+","+plan.spec().z()+". No blocks placed; execution rechecks the plot.");
+            }
             case "build" -> {ToolReply result=build(a,actor,owner);if(!result.error())plugin.companion().gesture(turn);yield result;}
             case "companion" -> plugin.companion().action(a,turn);
             case "give_item" -> {

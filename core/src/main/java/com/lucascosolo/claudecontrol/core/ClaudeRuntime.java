@@ -40,6 +40,15 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
     private GameTools tools;
     private Companion companion;
     private ExperienceManager experiences;
+    private ProjectManager projects;
+    public ProjectManager projects(){return projects;}
+    private BukkitTask projectTimer;
+    private final AtomicBoolean projectPending=new AtomicBoolean();
+    private volatile Runnable projectJob;
+    private final ThreadLocal<ProjectSession> projectContext=new ThreadLocal<>();
+    private final Map<Turn,ProjectSession> projectTurns=new ConcurrentHashMap<>();
+    private record ProjectSession(Turn turn,java.util.function.BooleanSupplier valid){}
+
     public ExperienceManager experiences(){return experiences;}
     GameTools gameTools(){return tools;}
     private BukkitTask eventTimer,initiativeTimer;
@@ -62,6 +71,13 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
     private final Set<FutureTask<?>> pending=ConcurrentHashMap.newKeySet();
     public Settings settings() {return settings;}
     public Companion companion(){return companion;}
+    private final AtomicBoolean companionPersistencePending=new AtomicBoolean();
+    public boolean queueCompanionPersistence(){
+        if(stopping || queue==null || companion==null)return false;
+        if(!companionPersistencePending.compareAndSet(false,true))return true;
+        if(queue.offer(()->{try{companion.persistIdentity();}catch(Exception refused){lastOutcome="Companion identity persistence failed";}finally{companionPersistencePending.set(false);}}))return true;
+        companionPersistencePending.set(false);return false;
+    }
     public boolean isPaused(){return paused || stopping;}
     @Override public void start(boolean previouslyPaused) throws Exception {
         paused=previouslyPaused;
@@ -85,6 +101,9 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
             companion=new Companion(this);
             experiences=new ExperienceManager(this);
             experiences.start();
+            projects=new ProjectManager(this);
+            queue.offer(()->{try{projects.load();}catch(Exception refused){lastOutcome="Project ledger refused; existing files retained";}});
+            projectTimer=Bukkit.getScheduler().runTaskTimer(host,this::projectTick,40,40);
             queue.offer(()->{try{companion.persistIdentity();}catch(Exception e){lastOutcome="Companion identity persistence failed";}});
 
             Bukkit.getPluginManager().registerEvents(this,host);
@@ -143,11 +162,12 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
     }
     @Override public boolean onCommand(CommandSender sender,Command command,String label,String[] args) {
         String action=args.length==0?"status":args[0].toLowerCase(Locale.ROOT);
+        if(action.equals("project")){projectCommand(sender,args);return true;}
         if(action.equals("initiative")){initiativeCommand(sender,args);return true;}
         if(action.equals("addons")) return experiences.command(sender,args);
         if(action.equals("companion")) {
             if(!(sender instanceof Player player) || !player.hasPermission("claudecontrol.ask")){sender.sendMessage("Control the companion from an authenticated permitted player account.");return true;}
-            if(args.length>1 && !args[1].equalsIgnoreCase("status"))invalidateInitiative();
+            if(args.length>1 && !args[1].equalsIgnoreCase("status")){invalidateProjects();invalidateInitiative();}
             com.google.gson.JsonObject input=new com.google.gson.JsonObject();input.addProperty("action",args.length>1?args[1].toLowerCase(Locale.ROOT):"status");
             try {
                 if(Set.of("wander","design").contains(input.get("action").getAsString())) {
@@ -180,7 +200,7 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
             case "status" -> sender.sendMessage("Claude: " + (paused?"paused":settings.apiKey().isBlank()?"inactive; set api-key in private config.yml":"ready")
                 + "; API model " + settings.model() + "; queue " + queue.size() + "; events " + (settings.eventsEnabled()?"on":"off") + "; " + lastOutcome
                 + "; last-turn tokens in/out " + agent.lastUsage().inputTokens()+"/"+agent.lastUsage().outputTokens());
-            case "pause" -> {invalidateInitiative();paused=true;companion.stop("Paused by owner");sender.sendMessage("Claude paused. A turn already in progress may finish.");}
+            case "pause" -> {invalidateProjects();invalidateInitiative();paused=true;companion.stop("Paused by owner");sender.sendMessage("Claude paused. A turn already in progress may finish.");}
             case "resume" -> {paused=false;sender.sendMessage(settings.apiKey().isBlank()?"No API key configured. Add it to private config.yml, then /claude reload.":"Claude resumed.");}
             case "reload" -> reloadAgent(sender);
             case "reset" -> {
@@ -224,7 +244,7 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
         if(times.size()>=settings.maxTurnsPerMinute()){if(!event)player.sendMessage("Claude is taking a breather; try again in a minute.");return;}
         Turn turn=new Turn(player.getUniqueId(),player.getName(),settings.isOwner(player.getUniqueId(),player.getName(),player.isOp()),text,event);
         if(queue.remainingCapacity()==0){if(!event)player.sendMessage("Claude's request queue is full; try shortly.");return;}
-        if(!event){invalidateInitiative();companion.interruptPlan(turn);}
+        if(!event){invalidateProjects();invalidateInitiative();companion.interruptPlan(turn);}
         if(!queue.offer(()->process(turn))){if(!event){companion.requestFinished();player.sendMessage("Claude's request queue is full; try shortly.");}return;}
         times.addLast(now);serverRates.addLast(now);
     }
@@ -257,6 +277,46 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
         }finally{
             if(!turn.event() && !stopping)try{onServerThread(()->{companion.requestFinished();return null;});}catch(Exception ignored){}
         }
+    }
+    private void invalidateProjects(){
+        if(projects!=null)projects.interrupt();
+        Runnable queued=projectJob;if(queued!=null && queue!=null && queue.remove(queued)){projectJob=null;projectPending.set(false);}
+    }
+    private void requireProject(ProjectSession session){
+        if(!Bukkit.isPrimaryThread())throw new IllegalStateException("Project checks require server thread");
+        Player player=Bukkit.getPlayer(session.turn.actorId());
+        if(stopping || paused || !session.valid.getAsBoolean() || !session.turn.privileged() || player==null || !player.isOnline()
+            || !player.getName().equals(session.turn.actorName()) || !player.hasPermission("claudecontrol.ask")
+            || !settings.isOwner(player.getUniqueId(),player.getName(),player.isOp()))throw new IllegalStateException("Project owner or execution authorization unavailable");
+    }
+    public ToolReply projectExecution(Turn turn,java.util.function.BooleanSupplier valid,Callable<ToolReply> action) throws Exception {
+        ProjectSession session=new ProjectSession(turn,valid);projectContext.set(session);projectTurns.put(turn,session);
+        try{onServerThread(()->{requireProject(session);return null;});return action.call();}
+        finally{projectTurns.remove(turn);projectContext.remove();}
+    }
+    private void projectTick(){
+        if(stopping || paused || projects==null || workerBusy.get() || !queue.isEmpty() || projectPending.get())return;
+        for(ProjectManager.Candidate candidate:projects.candidates()){
+            Player owner=Bukkit.getPlayer(candidate.ownerId());
+            if(owner==null || !owner.isOnline() || !owner.getName().equals(candidate.ownerName()) || !owner.hasPermission("claudecontrol.ask") || !settings.isOwner(owner.getUniqueId(),owner.getName(),owner.isOp()))continue;
+            long generation=projects.generation();Turn turn=new Turn(owner.getUniqueId(),owner.getName(),true,"Execute the next ordered step of explicitly started project "+candidate.id(),false);
+            Runnable job=()->{try{projects.execute(candidate.id(),turn,tools,generation);}catch(Exception refused){lastOutcome="Project step refused; inspect saved progress";}finally{projectJob=null;projectPending.set(false);}};
+            if(!projectPending.compareAndSet(false,true))return;projectJob=job;
+            if(!queue.offer(job)){projectPending.set(false);projectJob=null;}return;
+        }
+    }
+    private void projectCommand(CommandSender sender,String[] args){
+        if(!(sender instanceof Player player) || !player.hasPermission("claudecontrol.ask")){sender.sendMessage("Use project commands from an authenticated permitted player account.");return;}
+        String action=args.length>1?args[1].toLowerCase(Locale.ROOT):"list";
+        if(action.equals("status"))action="list";
+        if(!Set.of("list","read","pause","resume").contains(action)){sender.sendMessage("Usage: /claude project list|status|read|pause|resume [id]");return;}
+        boolean owner=settings.isOwner(player.getUniqueId(),player.getName(),player.isOp());
+        if(!Set.of("list","read").contains(action) && !owner){sender.sendMessage("Project administration requires a current owner.");return;}
+        JsonObject input=new JsonObject();input.addProperty("action",action);
+        if(!action.equals("list")){if(args.length!=3){sender.sendMessage("Provide the saved project id.");return;}input.addProperty("id",args[2]);}
+        Turn turn=new Turn(player.getUniqueId(),player.getName(),owner,"Explicit saved project command",false);
+        if(!Set.of("list","read").contains(action)){invalidateProjects();invalidateInitiative();companion.interruptPlan(turn);companion.requestFinished();}
+        if(!queue.offer(()->{try{ToolReply result=projects.handle(input,turn,tools);tellPlayer(turn.actorId(),result.text());}catch(Exception refused){tellPlayer(turn.actorId(),"Project operation refused; inspect actual progress. Interrupted or blocked steps require a new reviewed plan and are never automatically replayed.");}}))sender.sendMessage("Claude queue is full; project command not queued.");
     }
     private void loadInvitation(){
         long revision=invitationRevision.get();
@@ -386,6 +446,7 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
         });
     }
     Player authorizedActor(Turn turn) {
+        ProjectSession project=projectTurns.get(turn);if(project!=null)requireProject(project);
         InitiativeSession initiative=initiativeTurns.get(turn);if(initiative!=null)requireInitiative(initiative);
         if(!Bukkit.isPrimaryThread())throw new IllegalStateException("Identity checks require the server thread");
         Player player=Bukkit.getPlayer(turn.actorId());
@@ -399,10 +460,11 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
     }
     public <T> T onServerThread(Callable<T> action) throws Exception {
         if(stopping)throw new IllegalStateException("Plugin stopped");
+        ProjectSession project=projectContext.get();
         InitiativeSession initiative=initiativeContext.get();
-        if(Bukkit.isPrimaryThread()){if(initiative!=null)requireInitiative(initiative);return action.call();}
+        if(Bukkit.isPrimaryThread()){if(project!=null)requireProject(project);if(initiative!=null)requireInitiative(initiative);return action.call();}
         FutureTask<T> future=new FutureTask<>(()->{
-            if(stopping)throw new IllegalStateException("Plugin stopped");if(initiative!=null)requireInitiative(initiative);return action.call();
+            if(stopping)throw new IllegalStateException("Plugin stopped");if(project!=null)requireProject(project);if(initiative!=null)requireInitiative(initiative);return action.call();
         });
         pending.add(future);BukkitTask task=Bukkit.getScheduler().runTask(host,future);
         try{return future.get(10,TimeUnit.SECONDS);}
@@ -412,11 +474,12 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
     }
     @Override public void stop() {
         if(stopping)return;
-        invalidateInitiative();
+        invalidateProjects();invalidateInitiative();
         stopping=true;paused=true;
         HandlerList.unregisterAll(this);
         if(eventTimer!=null)eventTimer.cancel();
         if(initiativeTimer!=null)initiativeTimer.cancel();
+        if(projectTimer!=null)projectTimer.cancel();
         if(experiences!=null)experiences.close();
         if(companion!=null)companion.close();
         pending.forEach(future->future.cancel(false));pending.clear();

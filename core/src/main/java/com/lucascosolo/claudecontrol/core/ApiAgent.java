@@ -20,6 +20,22 @@ public final class ApiAgent implements AutoCloseable {
         public ApiFailure(int status) { super("Claude API request failed (HTTP " + status + ")"); this.status=status; }
         public int status(){return status;}
     }
+    public enum FailureReason {OUTPUT_LIMIT,TIMEOUT,PROVIDER,INVALID_RESPONSE,TOOL_LIMIT,OTHER}
+    public static final class TurnFailure extends IllegalStateException {
+        private final FailureReason reason;
+        TurnFailure(FailureReason reason,int status,boolean executed) {
+            super("Claude turn failed"+(status>0?" (HTTP "+status+")":"")+": "+switch(reason) {
+                case OUTPUT_LIMIT -> "response reached the output limit; use compact build shapes and smaller saved stages";
+                case TIMEOUT -> "provider response timed out; inspect saved project progress before retrying";
+                case PROVIDER -> "provider rejected the request";
+                case INVALID_RESPONSE -> "provider response was incomplete or invalid";
+                case TOOL_LIMIT -> "tool round limit reached; continue from saved project progress";
+                case OTHER -> "request could not complete";
+            }+". Conversation was not committed; interrupted request retained."+(executed?" World actions already performed remain in the world.":" No world actions were performed."));
+            this.reason=reason;
+        }
+        public FailureReason reason(){return reason;}
+    }
     private final Settings settings;
     private final String prompt, filename;
     private final JsonArray tools;
@@ -71,6 +87,8 @@ public final class ApiAgent implements AutoCloseable {
                     JsonObject u=response.getAsJsonObject("usage"); Usage old=lastUsage;
                     lastUsage=new Usage(old.inputTokens()+tokens(u,"input_tokens"),old.outputTokens()+tokens(u,"output_tokens"),old.cacheReadInputTokens()+tokens(u,"cache_read_input_tokens"),old.cacheCreationInputTokens()+tokens(u,"cache_creation_input_tokens"));
                 }
+                if(response!=null && response.has("stop_reason") && response.get("stop_reason").isJsonPrimitive()
+                    && response.get("stop_reason").getAsString().equals("max_tokens"))throw new TurnFailure(FailureReason.OUTPUT_LIMIT,0,executed);
                 if(response==null || !response.has("content") || !response.get("content").isJsonArray() || !response.has("stop_reason")) throw new IllegalArgumentException("Malformed API response");
                 JsonArray content=response.getAsJsonArray("content"); if(content.isEmpty() || bytes(content)>RESPONSE_BYTES) throw new IllegalArgumentException("Invalid API response content");
                 if(content.toString().contains(settings.apiKey())) throw new IllegalArgumentException("API response contains credentials");
@@ -103,10 +121,12 @@ public final class ApiAgent implements AutoCloseable {
                 JsonObject progress=new JsonObject(); progress.addProperty("state","tool_actions_recorded"); progress.add("messages",current.deepCopy()); store.retainProgress(progress.toString());
             }
         } catch(Exception failure) {
-            if(executed) { try { JsonObject recovery=new JsonObject(); recovery.addProperty("state","interrupted_turn_world_actions_may_remain"); recovery.add("messages",current.deepCopy()); store.retainProgress(recovery.toString()); } catch(Exception ignored) {} }
+            try { JsonObject recovery=new JsonObject(); recovery.addProperty("state",executed?"interrupted_turn_world_actions_may_remain":"interrupted_request_before_world_actions"); recovery.add("messages",current.deepCopy()); store.retainProgress(recovery.toString()); } catch(Exception ignored) {}
             if(failure instanceof InterruptedException) Thread.currentThread().interrupt();
-            String status=failure instanceof ApiFailure api?" (HTTP "+api.status()+")":"";
-            throw new IllegalStateException("Claude turn failed"+status+"; conversation was not committed."+(executed?" World actions already performed remain in the world.":""));
+            FailureReason reason=failure instanceof TurnFailure typed?typed.reason():failure instanceof HttpTimeoutException?FailureReason.TIMEOUT:
+                failure instanceof ApiFailure?FailureReason.PROVIDER:failure instanceof IllegalArgumentException || failure instanceof JsonParseException?FailureReason.INVALID_RESPONSE:
+                "Claude reached its tool round limit".equals(failure.getMessage())?FailureReason.TOOL_LIMIT:FailureReason.OTHER;
+            throw new TurnFailure(reason,failure instanceof ApiFailure api?api.status():0,executed);
         }
     }
     private String safe(String text) { return settings.apiKey().isEmpty()?text:text.replace(settings.apiKey(),"[redacted]"); }

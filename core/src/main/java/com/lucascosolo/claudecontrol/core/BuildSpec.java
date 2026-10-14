@@ -49,17 +49,40 @@ public record BuildSpec(String world, int x, int y, int z, int width, int height
         if (!input.has("operations") || !input.get("operations").isJsonArray()) throw new IllegalArgumentException("Block operations required");
         var operations = input.getAsJsonArray("operations");
         if (operations.isEmpty() || operations.size() > 8192) throw new IllegalArgumentException("Between 1 and 8192 operations required");
-        List<BlockPlacement> blocks = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
+        Map<String,BlockPlacement> planned = new LinkedHashMap<>();
+        Set<String> explicit = new HashSet<>();int shapes=0;long visits=0;
         for (var element : operations) {
+            if(!element.isJsonObject())throw new IllegalArgumentException("Block operation must be an object");
             JsonObject op = element.getAsJsonObject();
             int bx = integer(op,"x"), by = integer(op,"y"), bz = integer(op,"z");
-            String material = op.get("material").getAsString();
-            if (bx < 0 || bx >= width || by < 0 || by >= height || bz < 0 || bz >= depth
-                || !seen.add(bx + ":" + by + ":" + bz)) throw new IllegalArgumentException("Invalid or duplicate relative block coordinate");
-            if (!safeMaterial(material)) throw new IllegalArgumentException("Unsafe material");
-            blocks.add(new BlockPlacement(bx,by,bz,material));
+            int ex=bx,ey=by,ez=bz;String mode="solid";
+            boolean shape=op.has("shape");
+            if(shape) {
+                if(!text(op,"shape").equals("box") || ++shapes>128)throw new IllegalArgumentException("Use at most 128 compact box shapes");
+                ex=integer(op,"x2");ey=integer(op,"y2");ez=integer(op,"z2");
+                mode=op.has("mode")?text(op,"mode"):"solid";
+                if(!Set.of("solid","shell","omit").contains(mode))throw new IllegalArgumentException("Box mode must be solid, shell or omit");
+            } else if(op.has("x2") || op.has("y2") || op.has("z2") || op.has("mode"))throw new IllegalArgumentException("Cuboid endpoints require shape=box");
+            if(bx<0 || by<0 || bz<0 || ex<bx || ey<by || ez<bz || ex>=width || ey>=height || ez>=depth)
+                throw new IllegalArgumentException("Invalid relative block bounds");
+            visits+=(long)(ex-bx+1)*(ey-by+1)*(ez-bz+1);
+            if(visits>65536)throw new IllegalArgumentException("Compact expansion exceeds 65536 inspected cells; split the project into stages");
+            String material=mode.equals("omit")?null:text(op,"material");
+            if(material!=null && (!safeMaterial(material) || material.equals("AIR")))throw new IllegalArgumentException("Unsafe material");
+            if(!shape && !explicit.add(bx+":"+by+":"+bz))throw new IllegalArgumentException("Duplicate explicit block coordinate");
+            for(int ix=bx;ix<=ex;ix++)for(int iy=by;iy<=ey;iy++)for(int iz=bz;iz<=ez;iz++) {
+                if(mode.equals("shell") && ix!=bx && ix!=ex && iy!=by && iy!=ey && iz!=bz && iz!=ez)continue;
+                String key=ix+":"+iy+":"+iz;
+                if(mode.equals("omit"))planned.remove(key); // Edits this unplaced plan only; never clears a world block.
+                else planned.put(key,new BlockPlacement(ix,iy,iz,material));
+            }
         }
-        return new BuildSpec(world,x,y,z,width,height,depth,replace,List.copyOf(blocks));
+        if(planned.isEmpty())throw new IllegalArgumentException("Build plan has no remaining placements");
+        return new BuildSpec(world,x,y,z,width,height,depth,replace,List.copyOf(planned.values()));
+    }
+    private static String text(JsonObject input,String name) {
+        var value=input.get(name);
+        if(value==null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString())throw new IllegalArgumentException("Expected text: "+name);
+        return value.getAsString();
     }
 }
