@@ -18,7 +18,7 @@ button:focus-visible, input:focus-visible, pre:focus-visible { outline: 2px soli
 .server-state { display: flex; gap: 14px; align-items: baseline; margin-bottom: 20px; }
 .state { font-size: 13px; font-weight: 650; background: #35404c; color: #d8e0e7; padding: 5px 10px; border-radius: 4px; white-space: nowrap; }
 .state[data-state="running"] { background: #304c3b; color: #c4e4cd; }
-.state[data-state="starting"] { background: #4e442c; color: #f1dfa6; }
+.state[data-state="starting"], .state[data-state="stopping"] { background: #4e442c; color: #f1dfa6; }
 .server-state p { color: #b8c4cf; line-height: 1.5; font-size: 14px; }
 .error { padding: 12px 14px; background: #483238; color: #f6d4da; border: 1px solid #78505a; border-radius: 4px; line-height: 1.5; margin-bottom: 18px; }
 .console { border: 1px solid #44515d; border-radius: 6px; overflow: hidden; background: #232d37; }

@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT))
-from panel.docker_control import DockerController
+from panel.docker_control import DockerController, ControlError
 from panel.server import make_server
 
 
@@ -123,10 +123,84 @@ class DockerControllerTest(unittest.TestCase):
             "docker", "compose", "-p", "claudecontrol", "-f",
             str((self.root / "server" / "compose.yaml").resolve()), "up", "-d", "minecraft",
         ], commands)
-        self.assertIn(["docker", "stop", "--time", "60", "claudecontrol-minecraft"], commands)
+        self.assertIn(["docker", "stop", "--time", "-1", "claudecontrol-minecraft"], commands)
         stop_calls = [kwargs for command, kwargs in runner.calls if command[:2] == ["docker", "stop"]]
-        self.assertTrue(all(kwargs["timeout"] > 60 for kwargs in stop_calls))
+        self.assertTrue(stop_calls)
+        self.assertTrue(all(kwargs["timeout"] == 75 for kwargs in stop_calls))
         self.assertTrue(all(not any(word in command for word in ("down", "rm", "exec")) for command in commands))
+
+    def test_already_stopped_container_needs_no_docker_stop_request(self):
+        runner = FakeRunner(self.root)
+        runner.inspect_data["State"] = {"Status": "exited", "Running": False}
+        controller = DockerController(self.root, runner=runner)
+        result = controller.stop()
+        self.assertEqual(result["state"], "stopped")
+        self.assertFalse(result["running"])
+        self.assertTrue(runner.calls)
+        self.assertTrue(all(command[:2] == ["docker", "inspect"] for command, _ in runner.calls))
+
+    def test_stop_client_timeout_reports_still_saving_without_force_kill_or_false_success(self):
+        runner = FakeRunner(self.root)
+
+        def timeout_stop(command, **kwargs):
+            if command[:2] == ["docker", "stop"]:
+                runner.calls.append((command, kwargs))
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return runner(command, **kwargs)
+
+        controller = DockerController(self.root, runner=timeout_stop)
+        result = controller.stop()
+        self.assertEqual(result["state"], "stopping")
+        self.assertTrue(result["running"])
+        self.assertIn("saving", result["message"].lower())
+        self.assertIn("do not", result["message"].lower())
+        self.assertIn("power", result["message"].lower())
+        self.assertEqual(controller.status()["state"], "stopping")
+        commands = [command for command, _ in runner.calls]
+        stop_commands = [command for command in commands if command[:2] == ["docker", "stop"]]
+        self.assertEqual(stop_commands, [["docker", "stop", "--time", "-1", "claudecontrol-minecraft"]])
+        self.assertTrue(all(command[:2] in (["docker", "inspect"], ["docker", "stop"]) for command in commands))
+        runner.inspect_data["State"] = {"Status": "exited", "Running": False}
+        self.assertEqual(controller.status()["state"], "stopped")
+        runner.inspect_data["State"] = {"Status": "running", "Running": True}
+        self.assertEqual(controller.status()["state"], "running", "A verified stopped container clears the pending stop flag")
+
+    def test_stop_client_timeout_can_confirm_container_finished_saving(self):
+        runner = FakeRunner(self.root)
+
+        def finish_then_timeout(command, **kwargs):
+            if command[:2] == ["docker", "stop"]:
+                runner.calls.append((command, kwargs))
+                runner.inspect_data["State"] = {"Status": "exited", "Running": False}
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return runner(command, **kwargs)
+
+        controller = DockerController(self.root, runner=finish_then_timeout)
+        result = controller.stop()
+        self.assertEqual(result["state"], "stopped")
+        self.assertFalse(result["running"])
+        stops = [(command, kwargs["timeout"]) for command, kwargs in runner.calls if command[:2] == ["docker", "stop"]]
+        self.assertEqual(stops, [(["docker", "stop", "--time", "-1", "claudecontrol-minecraft"], 75)])
+
+    def test_stop_refuses_changed_identity_before_requesting_any_shutdown(self):
+        runner = FakeRunner(self.root)
+        runner.inspect_data["Config"]["Labels"]["com.docker.compose.project"] = "unrelated"
+        controller = DockerController(self.root, runner=runner)
+        with self.assertRaises(ControlError):
+            controller.stop()
+        self.assertTrue(runner.calls)
+        self.assertTrue(all(command[:2] == ["docker", "inspect"] for command, _ in runner.calls))
+
+    def test_nonzero_stop_failure_is_reported_and_never_claims_stopped(self):
+        runner = FakeRunner(self.root, returncode=1)
+        controller = DockerController(self.root, runner=runner)
+        with self.assertRaises(ControlError):
+            controller.stop()
+        current = controller.status()
+        self.assertTrue(current["running"])
+        self.assertNotEqual(current["state"], "stopped")
+        self.assertEqual([command for command, _ in runner.calls if command[:2] == ["docker", "stop"]],
+                         [["docker", "stop", "--time", "-1", "claudecontrol-minecraft"]])
 
     def test_status_and_logs_use_fake_runner_and_redact_password(self):
         runner = FakeRunner(self.root, stdout="<script>alert('x')</script> rcon.password=" + self.password)

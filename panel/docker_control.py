@@ -54,6 +54,7 @@ class DockerController:
         self.connection_factory = connection_factory
         self.lock = threading.Lock()
         self._secrets: set[str] = set()
+        self._stop_requested = False
 
     def _run(self, args: list[str], timeout: int = 15):
         try:
@@ -146,11 +147,17 @@ class DockerController:
             state = "paused"
         elif raw in ("removing", "dead"):
             state = "offline"
+        if self._stop_requested and running and state == "running":
+            state = "stopping"
+        elif not running:
+            self._stop_requested = False
         message = "Container is running. Watch the console for Minecraft's Done message before joining."
         if state == "starting":
             message = "Minecraft is starting. Watch the console for the Done message."
         elif state == "stopped":
             message = "Server is stopped. Select Start to play."
+        elif state == "stopping":
+            message = "Minecraft is still shutting down and may be saving. Do not power off the PC; no forced-stop deadline is active."
         elif state == "paused":
             message = "Container is paused. Unpause it with Docker before sending commands."
         elif state == "offline":
@@ -169,9 +176,21 @@ class DockerController:
 
     def stop(self) -> dict:
         with self.lock:
-            self._inspect()
-            result = self._run(["docker", "stop", "--time", "60", CONTAINER], timeout=75)
+            container = self._inspect()
+            if container["State"].get("Running") is not True:
+                return self.status()
+            self._stop_requested = True
+            try:
+                # Never turn a slow world save into a forced kill. The client wait is
+                # bounded; Docker continues the graceful shutdown if that wait expires.
+                result = self._run(["docker", "stop", "--time", "-1", CONTAINER], timeout=75)
+            except ControlError:
+                state = self.status()
+                if state["state"] in ("stopping", "stopped"):
+                    return state
+                raise
             if result.returncode:
+                self._stop_requested = False
                 raise ControlError("Docker could not stop Minecraft. Check the container status and try again.")
             return self.status()
 

@@ -166,6 +166,13 @@ direct requests incur Anthropic usage. `/claude pause` stops new requests.
 The local panel starts/stops one fixed container, displays recent output, and
 sends game console commands through loopback-only RCON. The container mounts
 only `run/server/`, with no home directory or Docker socket.
+The panel's Stop action waits for graceful shutdown without a forced-kill timer
+(`docker stop --time -1`). Its client wait is bounded; if the container is still
+running afterwards, the panel reports Stopping and keeps watching instead of
+claiming completion. Wait for Stopped before powering off the desktop. A slow
+save can produce Paper watchdog thread dumps; these alone neither prove data
+loss nor confirm a completed save. Restart the panel process to load controller
+changes; refreshing its browser page alone does not reload Python code.
 
 ## Development and restoration
 
@@ -178,7 +185,7 @@ handling and caching. Panel and startup tests use scratch data and fake
 Docker/RCON. Docker boot, real Java/Bedrock clients and a paid Claude turn still
 need validation on your desktop.
 
-Current verification: 242 core tests, 17 panel tests, 25 startup-helper tests,
+Current verification: 242 core tests, 22 panel tests, 25 startup-helper tests,
 18 upgrade-helper tests and 14 runtime-update tests passed. The shaded plugin and its script worker were
 built and checked. This does not replace
 the first live desktop session. Historical shell tests remain excluded.

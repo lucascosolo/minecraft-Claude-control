@@ -38,7 +38,7 @@ function controls() {
 function renderStatus(data) {
   serverState = data.state;
   elements.state.dataset.state = serverState;
-  elements.state.textContent = {running: "Running", starting: "Starting", stopped: "Stopped", "not-created": "Not created", offline: "Offline", paused: "Paused"}[serverState] || "Unknown";
+  elements.state.textContent = {running: "Running", starting: "Starting", stopping: "Stopping · saving", stopped: "Stopped", "not-created": "Not created", offline: "Offline", paused: "Paused"}[serverState] || "Unknown";
   if (!actionBusy) elements.status.textContent = data.message;
   controls();
 }
@@ -68,7 +68,7 @@ async function poll() {
   try {
     const status = await api("/api/status");
     renderStatus(status);
-    if (["running", "starting", "stopped", "paused"].includes(status.state)) {
+    if (["running", "starting", "stopping", "stopped", "paused"].includes(status.state)) {
       try {
         const logs = await api("/api/logs");
         renderLogs(logs.output);
