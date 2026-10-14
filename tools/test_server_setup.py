@@ -1,11 +1,13 @@
 """Startup helper contracts using retained project scratch and mocked downloads."""
 
 import ast
+import errno
 import hashlib
 import importlib.util
 import io
 import json
 from pathlib import Path
+import socket
 import stat
 import sys
 import tempfile
@@ -242,6 +244,56 @@ class ServerSetupTest(unittest.TestCase):
             if isinstance(node.func, ast.Attribute) and node.func.attr in ("run", "Popen", "call", "check_call", "check_output"):
                 self.assertFalse(any(keyword.arg == "shell" and isinstance(keyword.value, ast.Constant)
                                      and keyword.value.value is True for keyword in node.keywords), "shell=True is forbidden")
+
+
+class ServerPortTest(unittest.TestCase):
+    def setUp(self):
+        self.helpers = import_helpers()
+
+    def test_check_port_refuses_active_tcp_listener_even_with_address_reuse(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.settimeout(2)
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            port = listener.getsockname()[1]
+            with self.assertRaisesRegex(RuntimeError, "occupied"):
+                self.helpers.check_port(port)
+
+    def test_check_port_refuses_active_udp_socket_even_with_address_reuse(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as bound:
+            bound.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            bound.settimeout(2)
+            bound.bind(("127.0.0.1", 0))
+            port = bound.getsockname()[1]
+            with self.assertRaisesRegex(RuntimeError, "occupied"):
+                self.helpers.check_port(port, socket.SOCK_DGRAM)
+
+    def test_check_port_accepts_recently_closed_tcp_server_in_time_wait(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            # Linux requires both the former listener and the new bind to allow reuse.
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.settimeout(2)
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            port = listener.getsockname()[1]
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+                client.settimeout(2)
+                client.connect(("127.0.0.1", port))
+                accepted, _ = listener.accept()
+                with accepted:
+                    accepted.settimeout(2)
+                    # Server closes first, so its own port enters TIME_WAIT.
+                    accepted.shutdown(socket.SHUT_WR)
+                    self.assertEqual(client.recv(1), b"")
+                    client.shutdown(socket.SHUT_WR)
+                    self.assertEqual(accepted.recv(1), b"")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as without_reuse:
+            with self.assertRaises(OSError) as occupied:
+                without_reuse.bind(("0.0.0.0", port))
+            self.assertEqual(occupied.exception.errno, errno.EADDRINUSE,
+                "fixture must retain the closed server's TIME_WAIT reservation")
+        self.helpers.check_port(port)
 
 
 class ServerAccountTest(unittest.TestCase):

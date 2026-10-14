@@ -133,6 +133,24 @@ def require_stopped(controller):
     return state
 
 
+def wait_server_ports(controller, *, timeout_seconds=30, now=time.monotonic, wait=time.sleep):
+    deadline = now() + timeout_seconds
+    waiting = False
+    while True:
+        require_stopped(controller)
+        try:
+            for port, protocol in ((25565, socket.SOCK_STREAM), (25575, socket.SOCK_STREAM), (19132, socket.SOCK_DGRAM)):
+                desktop.check_port(port, protocol)
+            return
+        except RuntimeError:
+            if now() >= deadline:
+                raise
+            if not waiting:
+                print("Waiting briefly for Minecraft ports to be released after shutdown; no processes will be killed.")
+                waiting = True
+            wait(1)
+
+
 def tree_inventory(root):
     """Validate the entire tree before copying anything, including nested links."""
     root = Path(root).absolute()
@@ -346,8 +364,7 @@ def main():
     require_stopped(controller)
     if any(data_root.iterdir()):
         backup_server(PROJECT, controller)
-    for port, protocol in ((25565, socket.SOCK_STREAM), (25575, socket.SOCK_STREAM), (19132, socket.SOCK_DGRAM)):
-        desktop.check_port(port, protocol)
+    wait_server_ports(controller)
     install_assets(PROJECT, assets, plugin, controller)
     # The imported helpers retain accounts, key, EULA and whitelist protections.
     accounts = desktop.player_accounts()

@@ -6,11 +6,12 @@ import io
 import json
 import os
 from pathlib import Path
+import socket
 import stat
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, call
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
@@ -282,6 +283,61 @@ class UpgradeTest(unittest.TestCase):
         for scenario, (logs, expected) in cases.items():
             with self.subTest(scenario=scenario):
                 self.assertEqual(self.helper.crossplay_startup_state(logs), expected)
+
+
+    def test_wait_server_ports_retries_temporary_shutdown_release_and_checks_all_three_ports(self):
+        clock = [0.0]
+        waits = []
+
+        def advance(seconds):
+            waits.append(seconds)
+            clock[0] += seconds
+
+        self.controller.reset_mock()
+        with patch.object(self.helper.desktop, "check_port", side_effect=[RuntimeError("fixture still occupied"), None, None, None]) as probe, \
+             patch("builtins.print"):
+            self.helper.wait_server_ports(self.controller, timeout_seconds=3, now=lambda: clock[0], wait=advance)
+        self.assertEqual(waits, [1])
+        self.assertEqual(probe.call_args_list, [call(25565, socket.SOCK_STREAM),
+                         call(25565, socket.SOCK_STREAM), call(25575, socket.SOCK_STREAM), call(19132, socket.SOCK_DGRAM)])
+        self.assertEqual(self.controller.mock_calls, [call.status(), call.status()])
+
+    def test_wait_server_ports_preserves_persistent_occupied_port_refusal_at_deadline(self):
+        clock = [0.0]
+        waits = []
+
+        def advance(seconds):
+            waits.append(seconds)
+            clock[0] += seconds
+
+        self.controller.reset_mock()
+        with patch.object(self.helper.desktop, "check_port", side_effect=RuntimeError("fixture occupied port guard")) as probe, \
+             patch("builtins.print"):
+            with self.assertRaisesRegex(RuntimeError, "occupied port guard"):
+                self.helper.wait_server_ports(self.controller, timeout_seconds=2, now=lambda: clock[0], wait=advance)
+        self.assertEqual(clock[0], 2)
+        self.assertEqual(waits, [1, 1])
+        self.assertEqual(probe.call_args_list, [call(25565, socket.SOCK_STREAM)] * 3)
+        self.assertEqual(self.controller.mock_calls, [call.status()] * 3)
+
+    def test_wait_server_ports_revalidates_stopped_state_before_further_port_probes(self):
+        clock = [0.0]
+        waits = []
+
+        def advance(seconds):
+            waits.append(seconds)
+            clock[0] += seconds
+
+        self.controller.reset_mock()
+        self.controller.status.side_effect = [{"running": False, "state": "stopped"},
+                                              {"running": True, "state": "running"}]
+        with patch.object(self.helper.desktop, "check_port", side_effect=RuntimeError("fixture temporarily occupied")) as probe, \
+             patch("builtins.print"):
+            with self.assertRaisesRegex(RuntimeError, "must be stopped"):
+                self.helper.wait_server_ports(self.controller, timeout_seconds=3, now=lambda: clock[0], wait=advance)
+        self.assertEqual(waits, [1])
+        self.assertEqual(probe.call_args_list, [call(25565, socket.SOCK_STREAM)])
+        self.assertEqual(self.controller.mock_calls, [call.status(), call.status()])
 
 
 class XmlResult(unittest.TextTestResult):

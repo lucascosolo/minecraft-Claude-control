@@ -186,6 +186,11 @@ def configure(accounts):
 
 def check_port(port, protocol=socket.SOCK_STREAM):
     with socket.socket(socket.AF_INET, protocol) as probe:
+        # Closed TCP connections can retain TIME_WAIT after a clean shutdown.
+        # REUSEADDR permits that restart; active listeners still conflict.
+        # Never use REUSEPORT or UDP reuse, which could share a live service's port.
+        if protocol == socket.SOCK_STREAM:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind(("0.0.0.0", port))
         except OSError:
