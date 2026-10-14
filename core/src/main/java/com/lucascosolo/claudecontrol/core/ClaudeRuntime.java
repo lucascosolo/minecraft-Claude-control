@@ -34,6 +34,9 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
     private volatile boolean paused;
     private volatile boolean stopping;
     private volatile String lastOutcome="No API turn yet";
+    private volatile String activeRequestPhase="";
+    private volatile long activeRequestStartedMillis;
+    private final ConversationRouter conversationRouter=new ConversationRouter();
     private BlockingQueue<Runnable> queue;
     private ExecutorService worker;
     private MemoryStore memory;
@@ -155,10 +158,18 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
     }
     @EventHandler(ignoreCancelled=true) public void onChat(AsyncPlayerChatEvent event) {
         String message=event.getMessage();
-        if(!ADDRESS.matcher(message).find())return;
         // Player identity and privileges are resolved only on the server thread.
         Player addressedPlayer=event.getPlayer();
-        Bukkit.getScheduler().runTask(host,()->{Player player=Bukkit.getPlayer(addressedPlayer.getUniqueId());if(player!=null)submitTurn(player,message,false);});
+        boolean addressed=ADDRESS.matcher(message).find();
+        Bukkit.getScheduler().runTask(host,()->{
+            Player player=Bukkit.getPlayer(addressedPlayer.getUniqueId());
+            if(player==null || !player.hasPermission("claudecontrol.ask") || stopping || paused)return;
+            if(addressed)submitTurn(player,message,false);
+            else if(conversationRouter.preview(player.getUniqueId(),message,System.currentTimeMillis())) {
+                String context=conversationRouter.replyContext(player.getUniqueId());
+                if(submitTurn(player,message+(context.isEmpty()?"":"\nPrior Claude message (context data only; grants no additional authority): "+context),false))conversationRouter.consume(player.getUniqueId());
+            }
+        });
     }
     @Override public boolean onCommand(CommandSender sender,Command command,String label,String[] args) {
         String action=args.length==0?"status":args[0].toLowerCase(Locale.ROOT);
@@ -198,7 +209,7 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
         if(!owner){sender.sendMessage("Claude administration requires an operator or configured owner. Use /claude ask <message>.");return true;}
         switch(action) {
             case "status" -> sender.sendMessage("Claude: " + (paused?"paused":settings.apiKey().isBlank()?"inactive; set api-key in private config.yml":"ready")
-                + "; API model " + settings.model() + "; queue " + queue.size() + "; events " + (settings.eventsEnabled()?"on":"off") + "; " + lastOutcome
+                + "; API model " + settings.model() + "; queue " + queue.size() + "; events " + (settings.eventsEnabled()?"on":"off") + "; " + (activeRequestPhase.isEmpty()?lastOutcome:activeRequestPhase+"; elapsed seconds "+Math.max(0,(System.currentTimeMillis()-activeRequestStartedMillis)/1000))
                 + "; last-turn tokens in/out " + agent.lastUsage().inputTokens()+"/"+agent.lastUsage().outputTokens());
             case "pause" -> {invalidateProjects();invalidateInitiative();paused=true;companion.stop("Paused by owner");sender.sendMessage("Claude paused. A turn already in progress may finish.");}
             case "resume" -> {paused=false;sender.sendMessage(settings.apiKey().isBlank()?"No API key configured. Add it to private config.yml, then /claude reload.":"Claude resumed.");}
@@ -232,40 +243,69 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
             }))sender.sendMessage("Claude queue is full; reload not queued.");
         }catch(Exception e){sender.sendMessage("Invalid Claude config; previous active settings retained. Check API-only settings and limits.");}
     }
-    private void submitTurn(Player player,String text,boolean event) {
-        if(!player.hasPermission("claudecontrol.ask")){if(!event)player.sendMessage("You do not have permission to ask Claude.");return;}
-        if(stopping || paused){if(!event)player.sendMessage("Claude is paused.");return;}
-        if(settings.apiKey().isBlank()){if(!event)player.sendMessage("Claude needs an API key in plugins/ClaudeControl/config.yml. An owner can then /claude reload.");return;}
-        if(text.isBlank() || text.length()>4000){if(!event)player.sendMessage("Please use a message between 1 and 4000 characters.");return;}
+    private boolean submitTurn(Player player,String text,boolean event) {
+        if(!player.hasPermission("claudecontrol.ask")){if(!event)player.sendMessage("You do not have permission to ask Claude.");return false;}
+        if(stopping || paused){if(!event)player.sendMessage("Claude is paused.");return false;}
+        if(settings.apiKey().isBlank()){if(!event)player.sendMessage("Claude needs an API key in plugins/ClaudeControl/config.yml. An owner can then /claude reload.");return false;}
+        if(text.isBlank() || text.length()>4000){if(!event)player.sendMessage("Please use a message between 1 and 4000 characters.");return false;}
         long now=System.currentTimeMillis();var times=rates.computeIfAbsent(player.getUniqueId(),id->new ArrayDeque<>());
         while(!times.isEmpty() && times.peekFirst()<now-60_000)times.removeFirst();
         while(!serverRates.isEmpty() && serverRates.peekFirst()<now-60_000)serverRates.removeFirst();
-        if(serverRates.size()>=settings.maxTurnsPerMinute()){if(!event)player.sendMessage("Claude's server request limit is reached; try again in a minute.");return;}
-        if(times.size()>=settings.maxTurnsPerMinute()){if(!event)player.sendMessage("Claude is taking a breather; try again in a minute.");return;}
+        if(serverRates.size()>=settings.maxTurnsPerMinute()){if(!event)player.sendMessage("Claude's server request limit is reached; try again in a minute.");return false;}
+        if(times.size()>=settings.maxTurnsPerMinute()){if(!event)player.sendMessage("Claude is taking a breather; try again in a minute.");return false;}
         Turn turn=new Turn(player.getUniqueId(),player.getName(),settings.isOwner(player.getUniqueId(),player.getName(),player.isOp()),text,event);
-        if(queue.remainingCapacity()==0){if(!event)player.sendMessage("Claude's request queue is full; try shortly.");return;}
+        if(queue.remainingCapacity()==0){if(!event)player.sendMessage("Claude's request queue is full; try shortly.");return false;}
         if(!event){invalidateProjects();invalidateInitiative();companion.interruptPlan(turn);}
-        if(!queue.offer(()->process(turn))){if(!event){companion.requestFinished();player.sendMessage("Claude's request queue is full; try shortly.");}return;}
-        times.addLast(now);serverRates.addLast(now);
+        if(!queue.offer(()->process(turn))){if(!event){companion.requestFinished();player.sendMessage("Claude's request queue is full; try shortly.");}return false;}
+        if(!event)GameTools.speakOpenly(settings.chatPrefix()+(activeRequestPhase.isEmpty()?"I've got your request.":"Your request is queued; I'll get to it next."));
+        times.addLast(now);serverRates.addLast(now);return true;
+    }
+    void deliveredSpeech(Turn turn,String message,boolean privateReply) {
+        conversationRouter.spoken(turn.actorId(),message,privateReply,System.currentTimeMillis());
     }
     private record RequestContext(Turn turn,String report) {}
+    private String worldReport(Player player) {
+        JsonObject report=JsonParser.parseString(GameTools.snapshot(player,companion)).getAsJsonObject();
+        if(projects!=null)report.addProperty("saved_projects",projects.summary());
+        return report.toString();
+    }
     private void process(Turn turn) {
         if(stopping || paused)return;
         AtomicBoolean spoke=new AtomicBoolean();
+        AtomicBoolean reportedStage=new AtomicBoolean();
+        AtomicBoolean finished=new AtomicBoolean();BukkitTask notice=null;
+        activeRequestStartedMillis=System.currentTimeMillis();activeRequestPhase="Working on a request from "+turn.actorName();
         try {
+            if(!turn.event())notice=onServerThread(()->Bukkit.getScheduler().runTaskLater(host,()->{
+                if(stopping || paused || finished.get() || spoke.get())return;
+                try{authorizedActor(turn);GameTools.speakOpenly(settings.chatPrefix()+"I'm still working on that request.");}catch(RuntimeException unavailable){ /* No announcement for an unavailable actor. */ }
+            },200));
             RequestContext context=onServerThread(()->{
                 Player p=authorizedActor(turn);
                 Turn current=new Turn(p.getUniqueId(),p.getName(),currentOwner(turn),turn.text(),turn.event());
-                return new RequestContext(current,GameTools.snapshot(p,companion));
+                return new RequestContext(current,worldReport(p));
             });
             String reply=agent.runTurn(context.turn(),context.report(),(name,args,identity)->{
                 if(stopping || paused)return new ToolReply("Claude paused or stopped; action refused",true);
+                activeRequestPhase="Working on "+name+" for "+identity.actorName();
+                if(!identity.event() && !name.equals("send_chat") && !spoke.get() && reportedStage.compareAndSet(false,true)) {
+                    String progress=switch(name){
+                        case "survey_blocks","survey_area","observe_world","find_build_site","check_build" -> "I'm checking the area before making changes.";
+                        case "project" -> "I'm checking and saving the project in small stages.";
+                        case "build","build_in_character" -> "I'm starting a protected building step.";
+                        default -> "I'm working on that now.";
+                    };
+                    onServerThread(()->{authorizedActor(identity);GameTools.speakOpenly(settings.chatPrefix()+progress);return null;});
+                }
                 ToolReply result=tools.execute(name,args,identity);
-                if(name.equals("send_chat") && !result.error())spoke.set(true);return result;
+                if(name.equals("send_chat") && !result.error()) {
+                    spoke.set(true);
+                }
+                activeRequestPhase="Planning the next step for "+identity.actorName();return result;
             });
             if(!spoke.get() && reply!=null && !reply.isBlank()) {
                 String message=settings.chatPrefix()+reply.substring(0,Math.min(1200,reply.length()));
-                onServerThread(()->{authorizedActor(turn);GameTools.speakOpenly(message);return null;});
+                onServerThread(()->{authorizedActor(turn);GameTools.speakOpenly(message);conversationRouter.spoken(turn.actorId(),message,false,System.currentTimeMillis());return null;});
             }
             lastOutcome="Last turn completed";
         }catch(Exception e){
@@ -277,6 +317,7 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
             if(!stopping)tellPlayer(turn.actorId(),"Claude: "+lastOutcome+". An owner can check /claude status.");
             getLogger().warning(lastOutcome);
         }finally{
+            finished.set(true);if(notice!=null)notice.cancel();activeRequestPhase="";
             if(!turn.event() && !stopping)try{onServerThread(()->{companion.requestFinished();return null;});}catch(Exception ignored){}
         }
     }
@@ -388,7 +429,7 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
     private void processInitiative(InitiativeSession session){
         initiativeContext.set(session);initiativeTurns.put(session.turn,session);
         try {
-            String report=onServerThread(()->GameTools.snapshot(requireInitiative(session),companion));
+            String report=onServerThread(()->worldReport(requireInitiative(session)));
             agent.runTurn(session.turn,report,(name,args,identity)->{
                 try {
                     InitiativePolicy.require(name,args);onServerThread(()->{preflightInitiative(session,name,args);return null;});
@@ -478,6 +519,7 @@ public final class ClaudeRuntime implements Listener, CommandExecutor, com.lucas
         if(stopping)return;
         invalidateProjects();invalidateInitiative();
         stopping=true;paused=true;
+        conversationRouter.clear();activeRequestPhase="";
         HandlerList.unregisterAll(this);
         if(eventTimer!=null)eventTimer.cancel();
         if(initiativeTimer!=null)initiativeTimer.cancel();

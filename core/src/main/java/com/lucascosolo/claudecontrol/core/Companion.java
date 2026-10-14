@@ -471,7 +471,7 @@ public final class Companion {
                 || !clearCell(world,target.x(),target.y()+2,target.z())))throw new IllegalStateException("Jump headroom changed");
             jumpStart=here.clone();jumping=true;body.setGravity(true);body.setVelocity(new Vector(vx,target.y()>feet?0.42:0,vz));
         } else body.setVelocity(new Vector(vx,jumping?body.getVelocity().getY():0,vz));
-        look(new Location(world,target.x()+0.5,target.y()+1.4,target.z()+0.5));
+        lookAlongRoute(target.x()+0.5,target.z()+0.5);
     }
     private static boolean clearCell(World world,int x,int y,int z) {
         try {GameTools.checkLocation(world,x,y,z);return world.getBlockAt(x,y,z).getType().isAir();}
@@ -498,7 +498,7 @@ public final class Companion {
         Location next=here.clone().add(vx,0,vz);
         if(!safeCell(body.getWorld(),next.getBlockX(),level,next.getBlockZ()))throw new IllegalStateException("Next cell unsafe");
         body.setImmovable(false);body.setVelocity(new Vector(vx,0,vz));
-        look(new Location(body.getWorld(),target.x()+0.5,level+1.4,target.z()+0.5));
+        lookAlongRoute(target.x()+0.5,target.z()+0.5);
     }
     public CompletableFuture<ToolReply> build(BuildSpec spec,Map<BuildSpec.BlockPlacement,Material> materials,Turn turn) {
         Player actor=plugin.authorizedActor(turn);adopt();
@@ -566,6 +566,13 @@ public final class Companion {
         if(body!=null && body.isValid()){body.setVelocity(new Vector());body.setImmovable(!settle);body.setGravity(settle);jumping=false;}
     }
     private void look(Location target) {body.lookAt(target.getX(),target.getY(),target.getZ(),LookAnchor.EYES);}
+    private void lookAlongRoute(double x,double z) {
+        Location eyes=body.getEyeLocation();
+        // Waypoints below eye height made pitch oscillate as each block was approached.
+        // Keep a level gaze and avoid turning back toward an almost reached waypoint.
+        if(Math.hypot(x-eyes.getX(),z-eyes.getZ())<0.2)return;
+        body.lookAt(x,eyes.getY(),z,LookAnchor.EYES);
+    }
     /** Optional expression for powerful tools; never spawns, changes jobs or diverts a walk. */
     public void gesture(Turn turn) {
         try {
